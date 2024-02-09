@@ -1,0 +1,38 @@
+name: "Check our best practices"
+description: "Check against our team's best practices for pull requests"
+
+inputs:
+  token:
+    description: "A GitHub token to add a label to the PR"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout current repo
+      uses: actions/checkout@v4
+      with:
+          token: "${{ inputs.TOKEN }}"
+          fetch-depth: 0
+
+    - name: Install Python and depends
+      run: |
+        sudo apt install python3
+      shell: bash
+
+    - name: PR title contains Jira ticket
+      run: python3 ${{ github.action_path }}/pr_best_practices.py --pr-title "${{ github.event.pull_request.title }}"
+      shell: bash
+
+    - name: Commits contain Jira ticket
+      run: python3 ${{ github.action_path }}/pr_best_practices.py --check-commits "${{ github.event.pull_request.head.sha }}"
+      shell: bash
+
+    - name: PR description is not empty (blocking)
+      run: python3 ${{ github.action_path }}/pr_best_practices.py --pr-description "${{ github.event.pull_request.body}}"
+      shell: bash
+
+    - name: Add 'best practice' label on success
+      if: success()
+      run: python ${{ github.action_path }}/pr_best_practices.py --add-label --token "${{ GITHUB_TOKEN }}" --repository "$GITHUB_REPOSITORY" --pr-number "${{ github.event.pull_request.number }}"
+      shell: bash
