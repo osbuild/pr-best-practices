@@ -26,7 +26,7 @@ def check_pr_description_not_empty(description):
     if description.strip():
         print("✅ Pull request description is not empty.")
     else:
-        print("⛔ The pull-request needs a description.")
+        print("⛔ The pull request needs a description.")
         sys.exit(1)
 
 
