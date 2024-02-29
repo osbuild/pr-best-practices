@@ -7,10 +7,12 @@ import requests
 GITHUB_API_URL = "https://api.github.com"
 
 def check_pr_title_contains_jira(title):
-    if re.search(r"[A-Z][A-Z0-9]+-[0-9]+", title):
+    regex = r"(.*[?<=:])(.*[?<= \(])(\([A-Z][A-Z0-9]+-[0-9]+\))"
+    if re.search(regex, title):
         print("Well done!")
     else:
-        print("PR title should contain a Jira.")
+        print("The pull request title should follow this schema:\n"
+              " `component: This describes the change (JIRA-001)`")
 
 def check_commits_contain_jira(head):
     cmd = f"git rev-list main..{head} --format='%s: %b' --no-commit-header"
