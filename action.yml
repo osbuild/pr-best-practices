@@ -21,11 +21,10 @@ runs:
       run: python3 ${{ github.action_path }}/pr_best_practices.py --pr-title "${{ github.event.pull_request.title }}"
       shell: bash
 
-#    - name: PR description is not empty (blocking)
-#      run: |
-#        DESCRIPTION=$(cat << EOF "${{ github.event.pull_request.body }}" EOF)
-#        python3 ${{ github.action_path }}/pr_best_practices.py --pr-description $DESCRIPTION
-#      shell: bash
+    - name: PR description is not empty (blocking)
+      run: |
+        python3 ${{ github.action_path }}/pr_best_practices.py --pr-description "${{ github.event.pull_request.body }}"
+      shell: bash
 
     - name: Add 'best practice' label on success
       if: success()
