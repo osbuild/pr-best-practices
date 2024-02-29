@@ -24,5 +24,5 @@ runs:
 
     - name: Add 'best practice' label on success
       if: success()
-      run: python ${{ github.action_path }}/pr_best_practices.py --add-label --token "${{ inputs.TOKEN }}" --repository "${{ github.event.repository.name }}" --pr-number "${{ github.event.pull_request.number }}"
+      run: python ${{ github.action_path }}/pr_best_practices.py --add-label --token "${{ inputs.TOKEN }}" --repository "${{ github.event.repository.owner }}/${{ github.event.repository.name }}" --pr-number "${{ github.event.pull_request.number }}"
       shell: bash
