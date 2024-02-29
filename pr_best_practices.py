@@ -4,7 +4,6 @@ import os
 import sys
 import requests
 
-GITHUB_API_URL = "https://api.github.com"
 
 def check_pr_title_contains_jira(title):
     regex = r"(.*[?<=:])(.*[?<= \(])(\([A-Z][A-Z0-9]+-[0-9]+\))"
@@ -14,12 +13,14 @@ def check_pr_title_contains_jira(title):
         print("⛔ The pull request title should follow this schema:\n"
               " `component: This describes the change (JIRA-001)`")
 
+
 def check_commits_contain_jira(head):
     cmd = f"git rev-list main..{head} --format='%s: %b' --no-commit-header"
     commits = os.popen(cmd).read().strip().split('\n')
     for commit in commits:
         if re.search(r"[A-Z][A-Z0-9]+-[0-9]+", commit) is None and commit.strip():
             print(f"Commit message '{commit}' should contain a Jira.")
+
 
 def check_pr_description_not_empty(description):
     if description.strip():
@@ -28,21 +29,24 @@ def check_pr_description_not_empty(description):
         print("⛔ The pull-request needs a description.")
         sys.exit(1)
 
+
 def add_best_practice_label(token, repository, pr_number):
-    url = f"{GITHUB_API_URL}/repos/{repository}/issues/{pr_number}/labels"
+    github_api_url = "https://api.github.com"
+    url = f"{github_api_url}/repos/{repository}/issues/{pr_number}/labels"
     headers = {
         "Authorization": f"Bearer {token}",
         "X-GitHub-Api-Version": "2022-11-28",
         "Content-Type": "application/json"
     }
     payload = {
-        "labels": ["best-practice"]
+        "labels": ["🌟 best practice"]
     }
     response = requests.post(url, headers=headers, json=payload)
     if response.status_code != 200:
         print(f"Failed to add label to PR. Status code: {response.status_code}")
         sys.exit(1)
     print("Label 'best-practice' added to PR successfully.")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Perform various checks and actions related to GitHub Pull Requests.")
