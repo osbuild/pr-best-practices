@@ -9,9 +9,9 @@ GITHUB_API_URL = "https://api.github.com"
 def check_pr_title_contains_jira(title):
     regex = r"(.*[?<=:])(.*[?<= \(])(\([A-Z][A-Z0-9]+-[0-9]+\))"
     if re.search(regex, title):
-        print("Well done!")
+        print("✅ Pull request title complies with our schema.")
     else:
-        print("The pull request title should follow this schema:\n"
+        print("⛔ The pull request title should follow this schema:\n"
               " `component: This describes the change (JIRA-001)`")
 
 def check_commits_contain_jira(head):
@@ -23,9 +23,9 @@ def check_commits_contain_jira(head):
 
 def check_pr_description_not_empty(description):
     if description.strip():
-        print("Well done!")
+        print("✅ Pull request description is not empty.")
     else:
-        print("The PR needs a non-empty description.")
+        print("⛔ The pull-request needs a description.")
         sys.exit(1)
 
 def add_best_practice_label(token, repository, pr_number):
