@@ -5,6 +5,9 @@ inputs:
   token:
     description: "A GitHub token to add a label to the PR"
     required: true
+  regex:
+    description: "A custom regular expression for PR titles"
+    required: false
 
 runs:
   using: "composite"
