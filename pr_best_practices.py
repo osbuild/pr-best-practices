@@ -64,6 +64,6 @@ if __name__ == "__main__":
         check_pr_description_not_empty(args.pr_description)
     if args.add_label:
         if not (args.token and args.repository and args.pr_number):
-            print("Error: Token, repository, and PR number must be provided to add label.")
+            print("⛔ Token, repository, and PR number must be provided to add label.")
             sys.exit(1)
         add_best_practice_label(args.token, args.repository, args.pr_number)
