@@ -17,18 +17,13 @@ runs:
         sudo apt install python3 python3-requests
       shell: bash
 
-    - name: PR title complies
-      run: python3 ${{ github.action_path }}/pr_best_practices.py --pr-title "${{ github.event.pull_request.title }}"
-      shell: bash
-
-    - name: PR description is not empty (blocking)
+    - name: Run all PR best practice checks
       run: |
         python3 ${{ github.action_path }}/pr_best_practices.py --pr-description "${{ github.event.pull_request.body }}"
-      shell: bash
-
-    - name: Add 'best practice' label on success
-      if: success()
-      run: python ${{ github.action_path }}/pr_best_practices.py --add-label --token "$TOKEN" --repository "${{ github.event.repository.full_name }}" --pr-number "${{ github.event.pull_request.number }}"
+        python3 ${{ github.action_path }}/pr_best_practices.py --pr-title "${{ github.event.pull_request.title }}"
+        if [ "$?" == 0 ]; then
+          python3 ${{ github.action_path }}/pr_best_practices.py --add-label --token "$TOKEN" --repository "${{ github.event.repository.full_name }}" --pr-number "${{ github.event.pull_request.number }}"
+        fi
       shell: bash
       env:
         TOKEN: ${{ inputs.token }}

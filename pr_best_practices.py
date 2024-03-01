@@ -12,6 +12,7 @@ def check_pr_title_contains_jira(title):
     else:
         print("⛔ The pull request title should follow this schema:\n"
               " `component: This describes the change (JIRA-001)`")
+        sys.exit(2)
 
 
 def check_commits_contain_jira(head):
