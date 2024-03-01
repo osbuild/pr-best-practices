@@ -19,6 +19,7 @@ runs:
 
     - name: Run all PR best practice checks
       run: |
+        set +e
         python3 ${{ github.action_path }}/pr_best_practices.py --pr-description "${{ github.event.pull_request.body }}"
         python3 ${{ github.action_path }}/pr_best_practices.py --pr-title "${{ github.event.pull_request.title }}"
         if [ "$?" == 0 ]; then
