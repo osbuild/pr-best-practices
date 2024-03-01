@@ -11,7 +11,8 @@ def check_pr_title_contains_jira(title):
         print("✅ Pull request title complies with our schema.")
     else:
         print("⛔ The pull request title should follow this schema:\n"
-              " `component: This describes the change (JIRA-001)`")
+              " `component: This describes the change (JIRA-001)`\n"
+              f"but instead looks like this:\n `{title}`")
         sys.exit(2)
 
 
