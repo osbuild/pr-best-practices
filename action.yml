@@ -19,12 +19,12 @@ runs:
 
     - name: Run all PR best practice checks
       run: |
-        BODY=$(cat << GITHUBDELIMITER
+        BODY=$(cat << \GITHUBDELIMITER
         ${{ github.event.pull_request.body }}
         GITHUBDELIMITER
         )
         python3 "${{ github.action_path }}/pr_best_practices.py" --pr-description "$BODY"
-        TITLE=$(cat << GITHUBDELIMITER
+        TITLE=$(cat << \GITHUBDELIMITER
         ${{ github.event.pull_request.title }}
         GITHUBDELIMITER
         )
