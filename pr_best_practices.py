@@ -20,7 +20,12 @@ def check_commits_contain_jira(head):
     cmd = f"git rev-list main..{head} --format='%s: %b' --no-commit-header"
     commits = os.popen(cmd).read().strip().split('\n')
     for commit in commits:
-        if re.search(r"[A-Z][A-Z0-9]+-[0-9]+", commit) is None and commit.strip():
+        # We can directly mark commits that are empty
+        if not commit.strip():
+            print(f"Commit message '{commit}' should contain a Jira.")
+            continue
+
+        if re.search(r"[A-Z][A-Z0-9]+-[0-9]+", commit) is None:
             print(f"Commit message '{commit}' should contain a Jira.")
 
 
