@@ -25,8 +25,21 @@ def check_commits_contain_jira(head):
             print(f"Commit message '{commit}' should contain a Jira.")
             continue
 
-        if re.search(r"[A-Z][A-Z0-9]+-[0-9]+", commit) is None:
+        matches = re.findall(r"[A-Z][A-Z0-9]+-[0-9]+", commit)
+
+        if not matches:
             print(f"Commit message '{commit}' should contain a Jira.")
+            continue
+
+        for match in matches:
+            print(f"Assuming {match!r} is a RedHat JIRA reference.")
+
+            url = f"https://issues.redhat.com/browse/{match}"
+            res = requests.get(url)
+
+            if res.status_code != 200:
+                print("Assumed issue {match!r} is not publicly accessible.")
+
 
 
 def check_pr_description_not_empty(description):
