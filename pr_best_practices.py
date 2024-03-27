@@ -5,10 +5,21 @@ import sys
 import requests
 
 
+def check_jira_issues_public(text):
+    for match in re.findall(r"[A-Z][A-Z0-9]+-[0-9]+", text):
+        url = f"https://issues.redhat.com/browse/{match}"
+        res = requests.get(url)
+
+        if res.status_code != 200:
+            print("⛔ Assumed issue {match!r} is not publicly accessible.")
+
+
 def check_pr_title_contains_jira(title):
     regex = r"(.*[?<=:])(.*[?<= \(])(\([A-Z][A-Z0-9]+-[0-9]+\))"
     if re.search(regex, title):
         print("✅ Pull request title complies with our schema.")
+
+        check_jira_issues_public(title)
     else:
         print("⛔ The pull request title should follow this schema:\n"
               " `component: This describes the change (JIRA-001)`\n"
@@ -20,13 +31,19 @@ def check_commits_contain_jira(head):
     cmd = f"git rev-list main..{head} --format='%s: %b' --no-commit-header"
     commits = os.popen(cmd).read().strip().split('\n')
     for commit in commits:
-        if re.search(r"[A-Z][A-Z0-9]+-[0-9]+", commit) is None and commit.strip():
+        # We can directly mark commits that are empty
+        if not commit.strip():
             print(f"Commit message '{commit}' should contain a Jira.")
+            continue
+
+        check_jira_issues_public(commit)
 
 
 def check_pr_description_not_empty(description):
     if description.strip():
         print("✅ Pull request description is not empty.")
+
+        check_jira_issues_public(description.strip())
     else:
         print("⛔ The pull request needs a description.")
         sys.exit(1)
