@@ -18,21 +18,17 @@ runs:
       shell: bash
 
     - name: Run all PR best practice checks
+      env:
+        BODY: ${{ github.event.pull_request.body }}
+        TITLE: ${{ github.event.pull_request.title }}
+        TOKEN: ${{ inputs.token }}
+        REPOSITORY: ${{ github.event.repository.full_name }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
       run: |
-        BODY=$(cat << \GITHUBDELIMITER
-        ${{ github.event.pull_request.body }}
-        GITHUBDELIMITER
-        )
         python3 "${{ github.action_path }}/pr_best_practices.py" --pr-description "$BODY"
-        TITLE=$(cat << \GITHUBDELIMITER
-        ${{ github.event.pull_request.title }}
-        GITHUBDELIMITER
-        )
         set +e
         python3 "${{ github.action_path }}/pr_best_practices.py" --pr-title "$TITLE"
         if [ "$?" == 0 ]; then
-          python3 "${{ github.action_path }}/pr_best_practices.py" --add-label --token "$TOKEN" --repository "${{ github.event.repository.full_name }}" --pr-number "${{ github.event.pull_request.number }}"
+          python3 "${{ github.action_path }}/pr_best_practices.py" --add-label --token "$TOKEN" --repository "$REPOSITORY" --pr-number "$PR_NUMBER"
         fi
       shell: bash
-      env:
-        TOKEN: ${{ inputs.token }}
