@@ -47,6 +47,8 @@ runs:
         PR_TITLE: ${{ github.event.issue.title }}
         PR_BODY: ${{ github.event.issue.body }}
         JIRA_TOKEN: ${{ inputs.jira_token }}
+        REPOSITORY: ${{ github.event.repository.full_name }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
       shell: bash
       run: |
         if [[ "$COMMENT_BODY" =~ ^/jira ]]; then
@@ -81,6 +83,9 @@ runs:
             -d '{"title":'"$NEW_TITLE"',"body":'"$NEW_BODY"'}' \
             -H "Accept: application/vnd.github.v3+json" \
             -H "Authorization: token $GITHUB_TOKEN"
+
+          # Add a comment to the pull request with the newly created Jira issue link
+          python3 "${{ github.action_path }}/pr_best_practices.py" --add-comment "Here's the Jira Task I created for you: [$JIRA_KEY](https://issues.redhat.com/browse/$JIRA_KEY)" --token "$TOKEN" --repository "$REPOSITORY" --pr-number "$PR_NUMBER"
         else
           echo "No recognized slash command found."
         fi
