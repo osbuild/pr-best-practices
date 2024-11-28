@@ -45,6 +45,7 @@ runs:
         PR_TITLE: ${{ github.event.issue.title }}
         PR_BODY: ${{ github.event.issue.body }}
         JIRA_TOKEN: ${{ inputs.jira_token }}
+      shell: bash
       run: |
         if [[ "$COMMENT_BODY" =~ ^/jira ]]; then
           echo "Slash command '/jira' detected!"
