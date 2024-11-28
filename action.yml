@@ -23,6 +23,7 @@ runs:
       shell: bash
 
     - name: Run all PR best practice checks
+      if: github.event_name == 'pull_request_target'
       env:
         BODY: ${{ github.event.pull_request.body }}
         TITLE: ${{ github.event.pull_request.title }}
@@ -39,7 +40,7 @@ runs:
       shell: bash
 
     - name: Check for PR Comment
-      if: github.event.issue.pull_request != null
+      if: github.event_name == 'issue_comment' && github.event.issue.pull_request != null
       env:
         GITHUB_TOKEN: ${{ inputs.token }}
         COMMENT_BODY: ${{ github.event.comment.body }}
