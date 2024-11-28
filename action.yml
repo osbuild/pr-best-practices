@@ -48,7 +48,7 @@ runs:
         PR_BODY: ${{ github.event.issue.body }}
         JIRA_TOKEN: ${{ inputs.jira_token }}
         REPOSITORY: ${{ github.event.repository.full_name }}
-        PR_NUMBER: ${{ github.event.pull_request.number }}
+        PR_NUMBER: ${{ github.event.issue.number }}
       shell: bash
       run: |
         if [[ "$COMMENT_BODY" =~ ^/jira ]]; then
