@@ -43,12 +43,17 @@ runs:
           PR_BODY: ${{ github.event.issue.body }}
           JIRA_TOKEN: ${{ secrets.IMAGEBUILDER_BOT_JIRA_TOKEN }}
         run: |
-          set -euo pipefail
           if [[ "$COMMENT_BODY" =~ ^/jira ]]; then
             echo "Slash command '/jira' detected!"
-            pip install -r requirements.txt
+
+            # Exit if PR title contains a Jira ticket
+            python3 "${{ github.action_path }}/pr_best_practices.py" --pr-title "$PR_TITLE"
+            if [ "$?" == 0 ]; then
+              exit 0;
+            fi
+
             EPIC_KEY=$(echo "$COMMENT_BODY" | sed -n 's/.*\b\([A-Z]\{2,\}-[0-9]\{1,\}\)\b.*/\1/p')
-            JIRA_KEY=$(python3 jira_bot.py --token "$JIRA_TOKEN" --summary "$PR_TITLE" --description "$PR_BODY" --epic-link "$EPIC_KEY")
+            JIRA_KEY=$(python3 "${{ github.action_path }}/jira_bot.py" --token "$JIRA_TOKEN" --summary "$PR_TITLE" --description "$PR_BODY" --epic-link "$EPIC_KEY")
 
             # Add a rocket reaction to the comment
             curl -L ${{github.event.comment.url}}/reactions \
