@@ -12,6 +12,24 @@ DEFAULT_ISSUE_TYPE = os.getenv("DEFAULT_ISSUE_TYPE", "Task")
 DEFAULT_COMPONENT = os.getenv("DEFAULT_COMPONENT", "Image Builder")
 
 
+def is_epic_issue(jira, token, issue_key):
+    """
+    Check if a Jira issue exists and is of the type 'Epic'.
+    """
+    try:
+        # Get the issue
+        issue = jira.issue(issue_key)
+
+        # Check if the issue type is 'Epic'
+        if issue.fields.issuetype.name.lower() == 'epic':
+            return True
+        else:
+            return False
+    except Exception as e:
+        print(f"Error: {e}")
+        return False
+
+
 # pylint: disable=too-many-arguments
 def create_jira_task(token, project_key, summary, description, issue_type, epic_link, component):
     """
@@ -30,6 +48,12 @@ def create_jira_task(token, project_key, summary, description, issue_type, epic_
     except Exception as e:
         print(f"Failed to connect to Jira: {e}", file=sys.stderr)
         return
+
+    # Check if Epic exists
+    if is_epic_issue(jira, token, epic_link) is False:
+        print(f"The Jira issue '{epic_link}' does not exist or is not of issuetype Epic.")
+        sys.exit(1)
+
     # Task creation dictionary
     issue_dict = {
         'project': {'key': project_key},
