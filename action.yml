@@ -41,7 +41,7 @@ runs:
           COMMENT_BODY: ${{ github.event.comment.body }}
           PR_TITLE: ${{ github.event.issue.title }}
           PR_BODY: ${{ github.event.issue.body }}
-          JIRA_TOKEN: ${{ secrets.JIRA_TOKEN }}
+          JIRA_TOKEN: ${{ secrets.IMAGEBUILDER_BOT_JIRA_TOKEN }}
         run: |
           set -euo pipefail
           if [[ "$COMMENT_BODY" =~ ^/jira ]]; then
