@@ -37,7 +37,7 @@ runs:
     - name: Check for PR Comment
         if: github.event.issue.pull_request != null
         env:
-          GITHUB_TOKEN: ${{ secrets.SCHUTZBOT_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.SCHUTZBOT_GITHUB_ACCESS_TOKEN }}
           COMMENT_BODY: ${{ github.event.comment.body }}
           PR_TITLE: ${{ github.event.issue.title }}
           PR_BODY: ${{ github.event.issue.body }}
