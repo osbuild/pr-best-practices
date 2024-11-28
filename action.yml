@@ -5,6 +5,9 @@ inputs:
   token:
     description: "A GitHub token to add a label to the PR"
     required: true
+  jira_token:
+    description: "A Jira token to create issues"
+    required: true
   regex:
     description: "A custom regular expression for PR titles"
     required: false
@@ -37,11 +40,11 @@ runs:
     - name: Check for PR Comment
       if: github.event.issue.pull_request != null
       env:
-        GITHUB_TOKEN: ${{ secrets.SCHUTZBOT_GITHUB_ACCESS_TOKEN }}
+        GITHUB_TOKEN: ${{ inputs.token }}
         COMMENT_BODY: ${{ github.event.comment.body }}
         PR_TITLE: ${{ github.event.issue.title }}
         PR_BODY: ${{ github.event.issue.body }}
-        JIRA_TOKEN: ${{ secrets.IMAGEBUILDER_BOT_JIRA_TOKEN }}
+        JIRA_TOKEN: ${{ inputs.jira_token }}
       run: |
         if [[ "$COMMENT_BODY" =~ ^/jira ]]; then
           echo "Slash command '/jira' detected!"
