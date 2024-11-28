@@ -18,11 +18,11 @@ def is_epic_issue(jira, issue_key):
     """
     try:
         # Get the issue
-        print(f"Check if issue '{issue_key}' exists.")
+        print(f"Check if issue '{issue_key}' exists.", file=sys.stderr)
         issue = jira.issue(issue_key)
 
         # Check if the issue type is 'Epic'
-        print(f"Check if issue '{issue_key}' is an Epic.")
+        print(f"Check if issue '{issue_key}' is an Epic.", file=sys.stderr)
         if issue.fields.issuetype.name.lower() == 'epic':
             return True
         else:
@@ -53,7 +53,7 @@ def create_jira_task(token, project_key, summary, description, issue_type, epic_
 
     # Check if Epic exists
     if is_epic_issue(jira, epic_link) is False:
-        print(f"The Jira issue '{epic_link}' does not exist or is not of issuetype Epic.")
+        print(f"The Jira issue '{epic_link}' does not exist or is not of issuetype Epic.", file=sys.stderr)
         sys.exit(1)
 
     # Task creation dictionary
