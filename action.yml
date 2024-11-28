@@ -35,43 +35,43 @@ runs:
       shell: bash
 
     - name: Check for PR Comment
-        if: github.event.issue.pull_request != null
-        env:
-          GITHUB_TOKEN: ${{ secrets.SCHUTZBOT_GITHUB_ACCESS_TOKEN }}
-          COMMENT_BODY: ${{ github.event.comment.body }}
-          PR_TITLE: ${{ github.event.issue.title }}
-          PR_BODY: ${{ github.event.issue.body }}
-          JIRA_TOKEN: ${{ secrets.IMAGEBUILDER_BOT_JIRA_TOKEN }}
-        run: |
-          if [[ "$COMMENT_BODY" =~ ^/jira ]]; then
-            echo "Slash command '/jira' detected!"
+      if: github.event.issue.pull_request != null
+      env:
+        GITHUB_TOKEN: ${{ secrets.SCHUTZBOT_GITHUB_ACCESS_TOKEN }}
+        COMMENT_BODY: ${{ github.event.comment.body }}
+        PR_TITLE: ${{ github.event.issue.title }}
+        PR_BODY: ${{ github.event.issue.body }}
+        JIRA_TOKEN: ${{ secrets.IMAGEBUILDER_BOT_JIRA_TOKEN }}
+      run: |
+        if [[ "$COMMENT_BODY" =~ ^/jira ]]; then
+          echo "Slash command '/jira' detected!"
 
-            # Exit if PR title contains a Jira ticket
-            python3 "${{ github.action_path }}/pr_best_practices.py" --pr-title "$PR_TITLE"
-            if [ "$?" == 0 ]; then
-              exit 0;
-            fi
-
-            EPIC_KEY=$(echo "$COMMENT_BODY" | sed -n 's/.*\b\([A-Z]\{2,\}-[0-9]\{1,\}\)\b.*/\1/p')
-            JIRA_KEY=$(python3 "${{ github.action_path }}/jira_bot.py" --token "$JIRA_TOKEN" --summary "$PR_TITLE" --description "$PR_BODY" --epic-link "$EPIC_KEY")
-
-            # Add a rocket reaction to the comment
-            curl -L ${{github.event.comment.url}}/reactions \
-              -X POST \
-              -d '{"content":"rocket"}' \
-              -H "Accept: application/vnd.github+json" \
-              -H "X-GitHub-Api-Version: 2022-11-28" \
-              -H "Authorization: token $GITHUB_TOKEN"
-
-            # Edit the PR title and body with the JIRA key
-            # jq -RSa is used to escape the JSON string
-            NEW_TITLE=$(echo "$PR_TITLE ($JIRA_KEY)" | jq -Rsa .)
-            NEW_BODY=$(echo "$PR_BODY\n\nJIRA: [$JIRA_KEY](https://issues.redhat.com/browse/$JIRA_KEY)"| jq -Rsa .)
-            curl -L ${{github.event.issue.url}} \
-              -X PATCH \
-              -d '{"title":'"$NEW_TITLE"',"body":'"$NEW_BODY"'}' \
-              -H "Accept: application/vnd.github.v3+json" \
-              -H "Authorization: token $GITHUB_TOKEN"
-          else
-            echo "No recognized slash command found."
+          # Exit if PR title contains a Jira ticket
+          python3 "${{ github.action_path }}/pr_best_practices.py" --pr-title "$PR_TITLE"
+          if [ "$?" == 0 ]; then
+            exit 0;
           fi
+
+          EPIC_KEY=$(echo "$COMMENT_BODY" | sed -n 's/.*\b\([A-Z]\{2,\}-[0-9]\{1,\}\)\b.*/\1/p')
+          JIRA_KEY=$(python3 "${{ github.action_path }}/jira_bot.py" --token "$JIRA_TOKEN" --summary "$PR_TITLE" --description "$PR_BODY" --epic-link "$EPIC_KEY")
+
+          # Add a rocket reaction to the comment
+          curl -L ${{github.event.comment.url}}/reactions \
+            -X POST \
+            -d '{"content":"rocket"}' \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -H "Authorization: token $GITHUB_TOKEN"
+
+          # Edit the PR title and body with the JIRA key
+          # jq -RSa is used to escape the JSON string
+          NEW_TITLE=$(echo "$PR_TITLE ($JIRA_KEY)" | jq -Rsa .)
+          NEW_BODY=$(echo "$PR_BODY\n\nJIRA: [$JIRA_KEY](https://issues.redhat.com/browse/$JIRA_KEY)"| jq -Rsa .)
+          curl -L ${{github.event.issue.url}} \
+            -X PATCH \
+            -d '{"title":'"$NEW_TITLE"',"body":'"$NEW_BODY"'}' \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: token $GITHUB_TOKEN"
+        else
+          echo "No recognized slash command found."
+        fi
