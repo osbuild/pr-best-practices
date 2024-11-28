@@ -50,13 +50,16 @@ runs:
       shell: bash
       run: |
         if [[ "$COMMENT_BODY" =~ ^/jira ]]; then
-          echo "Slash command '/jira' detected!"
+          echo "Slash command '/jira' detected"
 
           # Exit if PR title contains a Jira ticket
+          echo "Check if the pull request title contains a Jira reference..."
+          set +e
           python3 "${{ github.action_path }}/pr_best_practices.py" --pr-title "$PR_TITLE"
           if [ "$?" == 0 ]; then
             exit 0;
           fi
+          set -e
 
           EPIC_KEY=$(echo "$COMMENT_BODY" | sed -n 's/.*\b\([A-Z]\{2,\}-[0-9]\{1,\}\)\b.*/\1/p')
           JIRA_KEY=$(python3 "${{ github.action_path }}/jira_bot.py" --token "$JIRA_TOKEN" --summary "$PR_TITLE" --description "$PR_BODY" --epic-link "$EPIC_KEY")
