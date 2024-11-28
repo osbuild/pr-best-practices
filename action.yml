@@ -77,7 +77,7 @@ runs:
           # Edit the PR title and body with the JIRA key
           # jq -RSa is used to escape the JSON string
           NEW_TITLE=$(echo "$PR_TITLE ($JIRA_KEY)" | jq -Rsa .)
-          NEW_BODY=$(echo "$PR_BODY\n\nJIRA: [$JIRA_KEY](https://issues.redhat.com/browse/$JIRA_KEY)"| jq -Rsa .)
+          NEW_BODY=$(echo "$PR_BODY\r\n\r\nJIRA: [$JIRA_KEY](https://issues.redhat.com/browse/$JIRA_KEY)"| jq -Rsa .)
           curl -L ${{github.event.issue.url}} \
             -X PATCH \
             -d '{"title":'"$NEW_TITLE"',"body":'"$NEW_BODY"'}' \
