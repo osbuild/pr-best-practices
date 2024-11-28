@@ -108,8 +108,8 @@ if __name__ == "__main__":
         check_commits_contain_jira(args.check_commits)
     if args.pr_description is not None:
         check_pr_description_not_empty(args.pr_description)
-    if args.add_comment_to_pr:
-        add_comment(args.repository, args.pr_number, args.add_comment, args.token)
+    if args.add_comment:
+        add_comment_to_pr(args.repository, args.pr_number, args.add_comment, args.token)
     if args.add_label:
         if not (args.token and args.repository and args.pr_number):
             print("⛔ Token, repository, and PR number must be provided to add label.")
