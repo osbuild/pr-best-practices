@@ -120,7 +120,7 @@ def main():
         issue_type=args.issuetype,
         epic_link=args.epic_link,
         component=args.component,
-        assignee=args.assignee
+        assignee=args.assignee,
         story_points=args.story_points
     )
 
