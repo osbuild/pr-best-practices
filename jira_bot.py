@@ -33,7 +33,7 @@ def is_epic_issue(jira, issue_key):
 
 
 # pylint: disable=too-many-arguments
-def create_jira_task(token, project_key, summary, description, issue_type, epic_link, component):
+def create_jira_task(token, project_key, summary, description, issue_type, epic_link, component, assignee, story_points):
     """
     create_jira_task creates a jira issue with the given parameter
     """
@@ -62,11 +62,16 @@ def create_jira_task(token, project_key, summary, description, issue_type, epic_
         'summary': summary,
         'description': description,
         'issuetype': {'name': issue_type},
+        'customfield_12310243': story_points,
     }
 
     # Add epic link if provided
     if epic_link:
         issue_dict['customfield_12311140'] = epic_link
+
+    # Add assignee if provided
+    if assignee:
+        issue_dict['assignee'] = {'name': assignee}
 
     # Add component if provided
     if component:
@@ -76,7 +81,6 @@ def create_jira_task(token, project_key, summary, description, issue_type, epic_
         new_issue = jira.create_issue(fields=issue_dict)
         print(f"🟢 Task created successfully: {new_issue.key}", file=sys.stderr)
         print(new_issue.key)
-        # TODO: Update pull request title with the new Jira issue key
     # pylint: disable=broad-exception-caught
     except Exception as e:
         print(f"🔴 Failed to create task: {e}", file=sys.stderr)
@@ -96,6 +100,11 @@ def main():
                         help="The description of the task.")
     parser.add_argument('--issuetype', default=DEFAULT_ISSUE_TYPE,
                         help=f"The issue type id (optional, default: {DEFAULT_ISSUE_TYPE})")
+    parser.add_argument('--assignee',
+                        help="The assignee of the task.")
+    parser.add_argument('--story-points', type=int, default=3,
+                        help="Story points to assign to the task (default: 3).")
+    parser.add_argument('--issuetype', default=DEFAULT_ISSUE_TYPE,
     parser.add_argument(
         '--epic-link', help="The epic link (optional, e.g. 'HMS-123')")
     parser.add_argument('--component', default=DEFAULT_COMPONENT,
@@ -111,7 +120,9 @@ def main():
         description=args.description,
         issue_type=args.issuetype,
         epic_link=args.epic_link,
-        component=args.component
+        component=args.component,
+        assignee=args.assignee
+        story_points=args.story_points
     )
 
 
