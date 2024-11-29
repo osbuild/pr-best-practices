@@ -22,7 +22,7 @@ def load_assignee_mapping(file_path):
             data = yaml.safe_load(yaml_file)
             return data.get('assignees', {})
     except Exception as e:
-        print(f"Error loading YAML file '{file_path}': {e}")
+        print(f"Error loading YAML file '{file_path}': {e}", file=sys.stderr)
         return {}
 
 
@@ -49,7 +49,7 @@ def is_epic_issue(jira, issue_key):
         else:
             return False
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error: {e}", file=sys.stderr)
         return False
 
 
@@ -140,7 +140,7 @@ def main():
     if args.assignee:
         jira_username = get_jira_username(args.assignee, assignee_mapping)
         if not jira_username:
-            print(f"🟠 Warning: No Jira username found for GitHub nickname '{args.assignee}'.")
+            print(f"🟠 Warning: No Jira username found for GitHub nickname '{args.assignee}'.", file=sys.stderr)
 
     # Call the task creation function with parsed arguments
     create_jira_task(
