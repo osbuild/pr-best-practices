@@ -104,7 +104,6 @@ def main():
                         help="The assignee of the task.")
     parser.add_argument('--story-points', type=int, default=3,
                         help="Story points to assign to the task (default: 3).")
-    parser.add_argument('--issuetype', default=DEFAULT_ISSUE_TYPE,
     parser.add_argument(
         '--epic-link', help="The epic link (optional, e.g. 'HMS-123')")
     parser.add_argument('--component', default=DEFAULT_COMPONENT,
