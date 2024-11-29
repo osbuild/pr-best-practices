@@ -3,6 +3,7 @@
 import argparse
 import os
 import sys
+import yaml
 
 from jira import JIRA
 
@@ -10,6 +11,26 @@ JIRA_SERVER = os.getenv("JIRA_SERVER", "https://issues.redhat.com")
 DEFAULT_PROJECT_KEY = os.getenv("DEFAULT_PROJECT_KEY", "HMS")
 DEFAULT_ISSUE_TYPE = os.getenv("DEFAULT_ISSUE_TYPE", "Task")
 DEFAULT_COMPONENT = os.getenv("DEFAULT_COMPONENT", "Image Builder")
+
+
+def load_assignee_mapping(file_path):
+    """
+    Load GitHub-to-Jira username mappings from a YAML file.
+    """
+    try:
+        with open(file_path, 'r') as yaml_file:
+            data = yaml.safe_load(yaml_file)
+            return data.get('assignees', {})
+    except Exception as e:
+        print(f"Error loading YAML file '{file_path}': {e}")
+        return {}
+
+
+def get_jira_username(github_nick, mapping):
+    """
+    Find the Jira username corresponding to a GitHub nickname.
+    """
+    return mapping.get(github_nick, None)
 
 
 def is_epic_issue(jira, issue_key):
@@ -108,8 +129,18 @@ def main():
         '--epic-link', help="The epic link (optional, e.g. 'HMS-123')")
     parser.add_argument('--component', default=DEFAULT_COMPONENT,
                         help=f"The component (default: '{DEFAULT_COMPONENT}').")
+    parser.add_argument('--assignees-yaml', default='assignees.yaml',
+                        help="Path to the YAML file containing GitHub-to-Jira username mappings (default: assignees.yaml).")
 
     args = parser.parse_args()
+
+    # Get the Jira username based on the GitHub nickname, if provided
+    assignee_mapping = load_assignee_mapping(args.assignees_yaml)
+    jira_username = None
+    if args.assignee:
+        jira_username = get_jira_username(args.assignee, assignee_mapping)
+        if not jira_username:
+            print(f"🟠 Warning: No Jira username found for GitHub nickname '{args.assignee}'.")
 
     # Call the task creation function with parsed arguments
     create_jira_task(
@@ -120,7 +151,7 @@ def main():
         issue_type=args.issuetype,
         epic_link=args.epic_link,
         component=args.component,
-        assignee=args.assignee,
+        assignee=jira_username,
         story_points=args.story_points
     )
 

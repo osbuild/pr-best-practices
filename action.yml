@@ -46,6 +46,7 @@ runs:
         PR_NUMBER: ${{ github.event.issue.number }}
         PR_TITLE: ${{ github.event.issue.title }}
         PR_BODY: ${{ github.event.issue.body }}
+        PR_AUTHOR: "${{ github.event.issue.user.login }}"
         COMMENT_BODY: ${{ github.event.comment.body }}
         GITHUB_TOKEN: ${{ inputs.token }}
         JIRA_TOKEN: ${{ inputs.jira_token }}
@@ -68,7 +69,8 @@ runs:
             --token "$JIRA_TOKEN" \
             --summary "$PR_TITLE" \
             --description "$PR_BODY" \
-            --epic-link "$EPIC_KEY")
+            --epic-link "$EPIC_KEY" \
+            --assignee "$PR_AUTHOR")
 
           # Add a rocket reaction to the comment
           # Edit the PR title and body with the JIRA key
