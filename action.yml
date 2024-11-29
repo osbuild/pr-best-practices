@@ -5,6 +5,9 @@ inputs:
   token:
     description: "A GitHub token to add a label to the PR"
     required: true
+  jira_token:
+    description: "A Jira token to create issues"
+    required: true
   regex:
     description: "A custom regular expression for PR titles"
     required: false
@@ -15,20 +18,73 @@ runs:
     - name: Install Python and depends
       run: |
         sudo apt install python3 python3-requests
+        cd ${{ github.action_path }}
+        pip install -r requirements.txt
       shell: bash
 
     - name: Run all PR best practice checks
+      if: github.event_name == 'pull_request_target'
       env:
-        BODY: ${{ github.event.pull_request.body }}
-        TITLE: ${{ github.event.pull_request.title }}
-        TOKEN: ${{ inputs.token }}
         REPOSITORY: ${{ github.event.repository.full_name }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
+        PR_TITLE: ${{ github.event.pull_request.title }}
+        PR_BODY: ${{ github.event.pull_request.body }}
+        GITHUB_TOKEN: ${{ inputs.token }}
       run: |
-        python3 "${{ github.action_path }}/pr_best_practices.py" --pr-description "$BODY"
+        python3 "${{ github.action_path }}/pr_best_practices.py" --pr-description "$PR_BODY"
         set +e
-        python3 "${{ github.action_path }}/pr_best_practices.py" --pr-title "$TITLE"
+        python3 "${{ github.action_path }}/pr_best_practices.py" --pr-title "$PR_TITLE"
         if [ "$?" == 0 ]; then
-          python3 "${{ github.action_path }}/pr_best_practices.py" --add-label --token "$TOKEN" --repository "$REPOSITORY" --pr-number "$PR_NUMBER"
+          python3 "${{ github.action_path }}/pr_best_practices.py" --add-label --token "$GITHUB_TOKEN" --repository "$REPOSITORY" --pr-number "$PR_NUMBER"
         fi
+      shell: bash
+
+    - name: Check for /jira command in PR comments
+      if: github.event_name == 'issue_comment' && github.event.issue.pull_request != null
+      env:
+        REPOSITORY: ${{ github.event.repository.full_name }}
+        PR_NUMBER: ${{ github.event.issue.number }}
+        PR_TITLE: ${{ github.event.issue.title }}
+        PR_BODY: ${{ github.event.issue.body }}
+        PR_AUTHOR: "${{ github.event.issue.user.login }}"
+        COMMENT_BODY: ${{ github.event.comment.body }}
+        GITHUB_TOKEN: ${{ inputs.token }}
+        JIRA_TOKEN: ${{ inputs.jira_token }}
+      run: |
+        set -euo pipefail
+        if [[ ! "$COMMENT_BODY" =~ ^/jira-epic ]]; then
+          echo "No recognized slash command found."
+          exit 0
+        fi
+
+        echo "🟢 Slash command '/jira-epic' detected"
+
+        # Exit if PR title contains a Jira ticket
+        echo "Bail if the pull request title already contains a Jira reference."
+        set +e
+        python3 "${{ github.action_path }}/pr_best_practices.py" --pr-title "$PR_TITLE"
+        if [ "$?" == 0 ]; then
+          exit 0;
+        fi
+        set -e
+        echo "🟢 The pull request title doesn't contain a Jira reference yet. Continue."
+
+        EPIC_KEY=$(echo "$COMMENT_BODY" | sed -n 's/.*\b\([A-Z]\{2,\}-[0-9]\{1,\}\)\b.*/\1/p')
+        JIRA_KEY=$(python3 "${{ github.action_path }}/jira_bot.py" \
+          --token "$JIRA_TOKEN" \
+          --summary "$PR_TITLE" \
+          --description "$PR_BODY" \
+          --epic-link "$EPIC_KEY" \
+          --assignee "$PR_AUTHOR" \
+          --assignees-yaml "${{ github.action_path }}/assignees.yaml")
+
+        # Add a rocket reaction to the comment
+        # Edit the PR title and body with the JIRA key
+        python3 "${{ github.action_path }}/update_pr.py" \
+          --comment-url "${{github.event.comment.url}}" \
+          --issue-url "${{github.event.issue.url}}" \
+          --github-token "$GITHUB_TOKEN" \
+          --pr-title "$PR_TITLE" \
+          --pr-body "$PR_BODY" \
+          --jira-key "$JIRA_KEY"
       shell: bash
