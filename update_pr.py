@@ -20,7 +20,7 @@ def process_github_event(comment_url, issue_url, github_token, pr_title, pr_body
     )
 
     if reaction_response.status_code == 201:
-        print("Rocket reaction added to the comment.")
+        print("🟢 Rocket reaction added to the comment.")
     else:
         print(f"Failed to add reaction: {reaction_response.status_code} - {reaction_response.text}")
 
@@ -31,7 +31,7 @@ def process_github_event(comment_url, issue_url, github_token, pr_title, pr_body
     issue_response = requests.patch(issue_url, headers=headers, json=issue_payload)
 
     if issue_response.status_code == 200:
-        print("Pull request title and body updated.")
+        print("🟢 Pull request title and body updated.")
     else:
         print(f"Failed to update pull request: {issue_response.status_code} - {issue_response.text}")
 
