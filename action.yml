@@ -51,8 +51,8 @@ runs:
         GITHUB_TOKEN: ${{ inputs.token }}
         JIRA_TOKEN: ${{ inputs.jira_token }}
       run: |
-        if [[ "$COMMENT_BODY" =~ ^/jira ]]; then
-          echo "🟢 Slash command '/jira' detected"
+        if [[ "$COMMENT_BODY" =~ ^/jira-epic ]]; then
+          echo "🟢 Slash command '/jira-epic' detected"
 
           # Exit if PR title contains a Jira ticket
           echo "Bail if the pull request title already contains a Jira reference."
