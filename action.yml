@@ -70,7 +70,8 @@ runs:
             --summary "$PR_TITLE" \
             --description "$PR_BODY" \
             --epic-link "$EPIC_KEY" \
-            --assignee "$PR_AUTHOR")
+            --assignee "$PR_AUTHOR" \
+            --assignees-yaml "${{ github.action_path }}/assignees.yaml")
 
           # Add a rocket reaction to the comment
           # Edit the PR title and body with the JIRA key
