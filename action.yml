@@ -12,10 +12,6 @@ inputs:
     description: "A custom regular expression for PR titles"
     required: false
 
-env:
-  GITHUB_TOKEN: ${{ inputs.token }}
-  REPOSITORY: ${{ github.event.repository.full_name }}
-
 runs:
   using: "composite"
   steps:
@@ -29,9 +25,11 @@ runs:
     - name: Run all PR best practice checks
       if: github.event_name == 'pull_request_target'
       env:
+        REPOSITORY: ${{ github.event.repository.full_name }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
         PR_TITLE: ${{ github.event.pull_request.title }}
         PR_BODY: ${{ github.event.pull_request.body }}
+        GITHUB_TOKEN: ${{ inputs.token }}
       run: |
         python3 "${{ github.action_path }}/pr_best_practices.py" --pr-description "$PR_BODY"
         set +e
@@ -44,10 +42,12 @@ runs:
     - name: Check for /jira command in PR comments
       if: github.event_name == 'issue_comment' && github.event.issue.pull_request != null
       env:
+        REPOSITORY: ${{ github.event.repository.full_name }}
         PR_NUMBER: ${{ github.event.issue.number }}
         PR_TITLE: ${{ github.event.issue.title }}
         PR_BODY: ${{ github.event.issue.body }}
         COMMENT_BODY: ${{ github.event.comment.body }}
+        GITHUB_TOKEN: ${{ inputs.token }}
         JIRA_TOKEN: ${{ inputs.jira_token }}
       run: |
         if [[ "$COMMENT_BODY" =~ ^/jira ]]; then
