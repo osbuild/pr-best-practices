@@ -73,7 +73,7 @@ def create_jira_task(token, project_key, summary, description, issue_type, epic_
         return
 
     # Check if Epic exists
-    if is_epic_issue(jira, epic_link) is False:
+    if not is_epic_issue(jira, epic_link):
         print(f"🔴 The Jira issue '{epic_link}' does not exist or is not of issuetype Epic.", file=sys.stderr)
         sys.exit(1)
 
@@ -125,8 +125,8 @@ def main():
                         help="The assignee of the task.")
     parser.add_argument('--story-points', type=int, default=3,
                         help="Story points to assign to the task (default: 3).")
-    parser.add_argument(
-        '--epic-link', help="The epic link (optional, e.g. 'HMS-123')")
+    parser.add_argument('--epic-link', required=True,
+                        help="The epic link (optional, e.g. 'HMS-123')")
     parser.add_argument('--component', default=DEFAULT_COMPONENT,
                         help=f"The component (default: '{DEFAULT_COMPONENT}').")
     parser.add_argument('--assignees-yaml', default='assignees.yaml',
