@@ -67,28 +67,6 @@ def add_best_practice_label(token, repository, pr_number):
     print("Label 'best-practice' added to PR successfully.")
 
 
-def add_comment_to_pr(repository, pr_number, comment, github_token):
-    """
-    Add a comment to a GitHub pull request.
-
-    Args:
-        repo_owner (str): The owner of the repository (e.g., "octocat").
-        repo_name (str): The name of the repository (e.g., "Hello-World").
-        pr_number (int): The number of the pull request.
-        comment (str): The comment to be added to the pull request.
-        github_token (str): Personal access token for GitHub.
-
-    Returns:
-        dict: The response from the GitHub API.
-    """
-    url = f"https://api.github.com/repos/{repository}/issues/{pr_number}/comments"
-    headers = {
-        "Authorization": f"Bearer {github_token}",
-        "Accept": "application/vnd.github.v3+json",
-    }
-    payload = {"body": comment}
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Perform various checks and actions related to GitHub Pull Requests.")
     parser.add_argument("--pr-title", help="Check if PR title contains a Jira ticket")
@@ -98,7 +76,6 @@ if __name__ == "__main__":
     parser.add_argument("--token", help="GitHub token")
     parser.add_argument("--repository", help="GitHub repository")
     parser.add_argument("--pr-number", type=int, help="Pull Request number")
-    parser.add_argument("--add-comment", help="Comment to add to a pull request (also requires: repository, token, pr-number)")
 
     args = parser.parse_args()
 
@@ -108,8 +85,6 @@ if __name__ == "__main__":
         check_commits_contain_jira(args.check_commits)
     if args.pr_description is not None:
         check_pr_description_not_empty(args.pr_description)
-    if args.add_comment:
-        add_comment_to_pr(args.repository, args.pr_number, args.add_comment, args.token)
     if args.add_label:
         if not (args.token and args.repository and args.pr_number):
             print("⛔ Token, repository, and PR number must be provided to add label.")

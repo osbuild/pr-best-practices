@@ -48,12 +48,12 @@ def create_jira_task(token, project_key, summary, description, issue_type, epic_
         print("Connected to Jira successfully using a personal access token.", file=sys.stderr)
     # pylint: disable=broad-exception-caught
     except Exception as e:
-        print(f"Failed to connect to Jira: {e}", file=sys.stderr)
+        print(f"🔴 Failed to connect to Jira: {e}", file=sys.stderr)
         return
 
     # Check if Epic exists
     if is_epic_issue(jira, epic_link) is False:
-        print(f"The Jira issue '{epic_link}' does not exist or is not of issuetype Epic.", file=sys.stderr)
+        print(f"🔴 The Jira issue '{epic_link}' does not exist or is not of issuetype Epic.", file=sys.stderr)
         sys.exit(1)
 
     # Task creation dictionary
@@ -74,12 +74,12 @@ def create_jira_task(token, project_key, summary, description, issue_type, epic_
 
     try:
         new_issue = jira.create_issue(fields=issue_dict)
-        print(f"Task created successfully: {new_issue.key}", file=sys.stderr)
+        print(f"🟢 Task created successfully: {new_issue.key}", file=sys.stderr)
         print(new_issue.key)
         # TODO: Update pull request title with the new Jira issue key
     # pylint: disable=broad-exception-caught
     except Exception as e:
-        print(f"Failed to create task: {e}", file=sys.stderr)
+        print(f"🔴 Failed to create task: {e}", file=sys.stderr)
 
 
 def main():
