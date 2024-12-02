@@ -20,7 +20,7 @@ def process_github_event(comment_url, issue_url, github_token, pr_title, pr_body
         json=reaction_payload
     )
 
-    if reaction_response.status_code >= 200 and reaction_response.status_code < 300
+    if reaction_response.status_code >= 200 and reaction_response.status_code < 300:
         print("🟢 Rocket reaction added to the comment.")
     else:
         print(f"Failed to add reaction: {reaction_response.status_code} - {reaction_response.text}")
