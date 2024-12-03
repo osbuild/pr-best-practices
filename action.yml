@@ -64,6 +64,7 @@ runs:
           echo "No recognized slash command found."
           exit 0
         fi
+        echo "The PR description was updated $COMMENT_BODY\n\n$COMMENT_BODY"
 
         echo "🟢 Slash command '/jira-epic' detected"
 
