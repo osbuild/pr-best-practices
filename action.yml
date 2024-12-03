@@ -46,6 +46,8 @@ runs:
         PR_NUMBER: ${{ github.event.pull_request.number }}
         PR_TITLE: ${{ github.event.pull_request.title }}
         PR_BODY: ${{ github.event.pull_request.body }}
+        GITHUB_TOKEN: ${{ inputs.token }}
+        JIRA_TOKEN: ${{ inputs.jira_token }}
       run: |
         echo "The PR description was updated $PR_BODY"
         set -euo pipefail
