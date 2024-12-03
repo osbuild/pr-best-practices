@@ -42,9 +42,47 @@ runs:
     - name: Check for /jira command in PR description bodies
       if: github.event_name == 'pull_request_target' && github.event.action == 'edited'
       env:
+        REPOSITORY: ${{ github.event.repository.full_name }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        PR_TITLE: ${{ github.event.pull_request.title }}
         PR_BODY: ${{ github.event.pull_request.body }}
       run: |
         echo "The PR description was updated $PR_BODY"
+        set -euo pipefail
+        if [[ ! "$PR_BODY" =~ /jira-epic ]]; then
+          echo "No recognized slash command found in the pull request description."
+          exit 0
+        fi
+
+        echo "🟢 Slash command '/jira-epic' detected in the pull request description"
+
+        # Exit if PR title contains a Jira ticket
+        echo "Bail if the pull request title already contains a Jira reference."
+        set +e
+        python3 "${{ github.action_path }}/pr_best_practices.py" --pr-title "$PR_TITLE"
+        if [ "$?" == 0 ]; then
+          exit 0;
+        fi
+        set -e
+        echo "🟢 The pull request title doesn't contain a Jira reference yet. Continue."
+
+        EPIC_KEY=$(echo "$COMMENT_BODY" | sed -n 's/.*\b\([A-Z]\{2,\}-[0-9]\{1,\}\)\b.*/\1/p')
+        JIRA_KEY=$(python3 "${{ github.action_path }}/jira_bot.py" \
+          --token "$JIRA_TOKEN" \
+          --summary "$PR_TITLE" \
+          --description "$PR_BODY" \
+          --epic-link "$EPIC_KEY" \
+          --assignee "$PR_AUTHOR" \
+          --assignees-yaml "${{ github.action_path }}/assignees.yaml")
+
+        # Edit the PR title and body with the JIRA key
+        python3 "${{ github.action_path }}/update_pr.py" \
+          --issue-url "${{github.event.pull_request.url}}" \
+          --github-token "$GITHUB_TOKEN" \
+          --pr-title "$PR_TITLE" \
+          --pr-body "$PR_BODY" \
+          --jira-key "$JIRA_KEY"
+
       shell: bash
 
     - name: Check for /jira command in PR comments
