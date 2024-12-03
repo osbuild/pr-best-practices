@@ -11,19 +11,20 @@ def process_github_event(comment_url, issue_url, github_token, pr_title, pr_body
         "Authorization": f"Bearer {github_token}"
     }
 
-    # Add a rocket reaction to the comment
-    reaction_url = f"{comment_url}/reactions"
-    reaction_payload = {"content": "rocket"}
-    reaction_response = requests.post(
-        reaction_url,
-        headers=headers,
-        json=reaction_payload
-    )
+    if comment_url:
+        # Add a rocket reaction to the comment
+        reaction_url = f"{comment_url}/reactions"
+        reaction_payload = {"content": "rocket"}
+        reaction_response = requests.post(
+            reaction_url,
+            headers=headers,
+            json=reaction_payload
+        )
 
-    if reaction_response.status_code >= 200 and reaction_response.status_code < 300:
-        print("🟢 Rocket reaction added to the comment.")
-    else:
-        print(f"Failed to add reaction: {reaction_response.status_code} - {reaction_response.text}")
+        if reaction_response.status_code >= 200 and reaction_response.status_code < 300:
+            print("🟢 Rocket reaction added to the comment.")
+        else:
+            print(f"Failed to add reaction: {reaction_response.status_code} - {reaction_response.text}")
 
     # Update the pull request title and body
     new_title = f"{pr_title} ({jira_key})"
@@ -43,7 +44,7 @@ def process_github_event(comment_url, issue_url, github_token, pr_title, pr_body
 
 def main():
     parser = argparse.ArgumentParser(description="Process a GitHub event to add a reaction and update PR metadata.")
-    parser.add_argument("--comment-url", required=True, help="URL of the GitHub comment to react to.")
+    parser.add_argument("--comment-url", help="URL of the GitHub comment to react to.")
     parser.add_argument("--issue-url", required=True, help="URL of the GitHub issue or pull request to update.")
     parser.add_argument("--github-token", required=True, help="GitHub personal access token.")
     parser.add_argument("--pr-title", required=True, help="Current title of the pull request.")
