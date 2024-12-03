@@ -45,6 +45,7 @@ runs:
         PR_BODY: ${{ github.event.pull_request.body }}
       run: |
         echo "The PR description was updated $PR_BODY"
+      shell: bash
 
     - name: Check for /jira command in PR comments
       if: github.event_name == 'issue_comment' && github.event.issue.pull_request != null
