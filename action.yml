@@ -23,7 +23,7 @@ runs:
       shell: bash
 
     - name: Run all PR best practice checks
-      if: github.event_name == 'pull_request_target'
+      if: github.event_name == 'pull_request_target' && github.event.action != 'edited'
       env:
         REPOSITORY: ${{ github.event.repository.full_name }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -40,7 +40,7 @@ runs:
       shell: bash
 
     - name: Check for /jira command in PR description bodies
-      if: ${{ github.event_name == 'pull_request' && github.event.action == 'edited' }}
+      if: github.event_name == 'pull_request_target' && github.event.action == 'edited'
       env:
         PR_BODY: ${{ github.event.pull_request.body }}
       run: |
@@ -64,7 +64,6 @@ runs:
           echo "No recognized slash command found."
           exit 0
         fi
-        echo "The PR description was updated $COMMENT_BODY\n\n$COMMENT_BODY"
 
         echo "🟢 Slash command '/jira-epic' detected"
 
