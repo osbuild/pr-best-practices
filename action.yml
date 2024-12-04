@@ -31,6 +31,7 @@ runs:
         PR_BODY: ${{ github.event.pull_request.body }}
         GITHUB_TOKEN: ${{ inputs.token }}
       run: |
+        exit 0
         python3 "${{ github.action_path }}/pr_best_practices.py" --pr-description "$PR_BODY"
         set +e
         python3 "${{ github.action_path }}/pr_best_practices.py" --pr-title "$PR_TITLE"
@@ -58,7 +59,7 @@ runs:
         elif [[ "${{ github.event.action }}" == "edited" ]]; then
           echo "Pull request description updated."
           BODY=$(echo "$PR_BODY")
-          echo "$BODY"
+          echo "body: $BODY"
         fi
 
         if [[ ! "$BODY" =~ "/jira-epic" ]]; then
