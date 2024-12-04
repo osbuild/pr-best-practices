@@ -49,6 +49,7 @@ runs:
         PR_BODY: ${{ github.event.issue.body }}
         PR_AUTHOR: "${{ github.event.issue.user.login }}"
         COMMENT_BODY: ${{ github.event.comment.body }}
+        PR_URL: ${{github.event.issue.url}}
         GITHUB_TOKEN: ${{ inputs.token }}
         JIRA_TOKEN: ${{ inputs.jira_token }}
       run: |
@@ -57,8 +58,10 @@ runs:
           echo "Event: New comment added to pull request."
         elif [[ "${{ github.event.action }}" == "edited" ]]; then
           echo "Event: Pull request description updated."
+          # Override variables based on the pull_request event type
           PR_BODY=$(echo "${{ github.event.pull_request.body }}")
           PR_TITLE=$(echo "${{ github.event.pull_request.title }}")
+          PR_URL=$(echo "${{github.event.pull_request.url}}")
         fi
 
         if [[ ! "$PR_BODY" =~ "/jira-epic" ]]; then
@@ -93,7 +96,7 @@ runs:
         # Update the PR title and body with the Jira key of the newly created Task
         python3 "${{ github.action_path }}/update_pr.py" \
           --comment-url "${{github.event.comment.url}}" \
-          --issue-url "${{github.event.issue.url}}" \
+          --issue-url "$PR_URL" \
           --github-token "$GITHUB_TOKEN" \
           --pr-title "$PR_TITLE" \
           --pr-body "$PR_BODY" \
