@@ -102,9 +102,9 @@ runs:
         JIRA_TOKEN: ${{ inputs.jira_token }}
       run: |
         set -euo pipefail
-        if [[ "${{ github.event_name }}" == "issue_comment" ]]
+        if [[ "${{ github.event_name }}" == "issue_comment" ]]; then
           echo "issue comment."
-        elif [[ "${{ github.event.action }}" == "edited" ]]
+        elif [[ "${{ github.event.action }}" == "edited" ]]; then
           echo "desciption edited"
         fi
         exit 0
