@@ -61,7 +61,7 @@ runs:
           # Override variables based on the pull_request event type
           PR_TITLE=$(echo "${{ github.event.pull_request.title }}")
           PR_BODY=$(echo "${{ github.event.pull_request.body }}")
-          PR_AUTHOR: "${{ github.event.pull_request.user.login }}"
+          PR_AUTHOR=$(echo "${{ github.event.pull_request.user.login }}")
           PR_URL=$(echo "${{github.event.pull_request.url}}")
         fi
 
@@ -73,11 +73,6 @@ runs:
         echo "🟢 Slash command '/jira-epic' detected"
 
         # Exit if PR title or description contain a Jira ticket already
-        echo "Bail if the pull request body already contains a Jira reference."
-        if [[ echo "$PR_BODY" | grep -qE "JIRA: [A-Z]+-[0-9]+" ]]; then
-          echo "⚪ The pull request description contains a Jira reference already, so we assume there's nothing to do."
-          exit 0
-        fi
         echo "Bail if the pull request title already contains a Jira reference."
         set +e
         python3 "${{ github.action_path }}/pr_best_practices.py" --pr-title "$PR_TITLE"
@@ -86,6 +81,11 @@ runs:
           exit 0;
         fi
         set -e
+        echo "Bail if the pull request body already contains a Jira reference."
+        if [[ echo "$PR_BODY" | grep -qE "JIRA: [A-Z]+-[0-9]+" ]]; then
+          echo "⚪ The pull request description contains a Jira reference already, so we assume there's nothing to do."
+          exit 0
+        fi
         echo "🟢 The pull request title and description don't contain a Jira reference yet. Continue."
 
         EPIC_KEY=$(python3 "${{ github.action_path }}/extract_jira_key.py" "$PR_BODY")
