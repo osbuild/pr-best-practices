@@ -82,7 +82,7 @@ runs:
         fi
         set -e
         echo "Bail if the pull request body already contains a Jira reference."
-        if [[ echo "$PR_BODY" | grep -qE "JIRA: [A-Z]+-[0-9]+" ]]; then
+        if echo "$PR_BODY" | grep -qE "JIRA: [A-Z]+-[0-9]+"; then
           echo "⚪ The pull request description contains a Jira reference already, so we assume there's nothing to do."
           exit 0
         fi
