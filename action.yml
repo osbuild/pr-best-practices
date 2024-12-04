@@ -58,9 +58,10 @@ runs:
         elif [[ "${{ github.event.action }}" == "edited" ]]; then
           echo "Pull request description updated."
           BODY=$(echo "$PR_BODY")
+          echo "$BODY"
         fi
 
-        if [[ ! "$BODY" =~ /jira-epic ]]; then
+        if [[ ! "$BODY" =~ "/jira-epic" ]]; then
           echo "⚪ No recognized slash command found."
           exit 0
         fi
