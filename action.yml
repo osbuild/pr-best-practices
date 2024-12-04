@@ -89,7 +89,7 @@ runs:
       shell: bash
 
     - name: Check for /jira command in PR comments
-      if: github.event_name == 'issue_comment' && github.event.issue.pull_request != null
+      if: ${{ github.event_name == 'issue_comment' && github.event.issue.pull_request != null || github.event_name == 'pull_request_target' && github.event.action == 'edited' }}
       env:
         REPOSITORY: ${{ github.event.repository.full_name }}
         PR_NUMBER: ${{ github.event.issue.number }}
@@ -101,6 +101,13 @@ runs:
         JIRA_TOKEN: ${{ inputs.jira_token }}
       run: |
         set -euo pipefail
+        if [[ "${{ github.event_name }} == "issue_comment" ]]
+          echo "issue comment."
+        elif [[ "${{ github.event.action }} == "edited" ]]
+          echo "desciption edited"
+        fi
+        exit 0
+
         if [[ ! "$COMMENT_BODY" =~ ^/jira-epic ]]; then
           echo "No recognized slash command found."
           exit 0
