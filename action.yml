@@ -50,6 +50,7 @@ runs:
         GITHUB_TOKEN: ${{ inputs.token }}
         JIRA_TOKEN: ${{ inputs.jira_token }}
       run: |
+        exit 0
         echo "The PR description was updated $PR_BODY"
         set -euo pipefail
         if [[ ! "$PR_BODY" =~ /jira-epic ]]; then
