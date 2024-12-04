@@ -59,7 +59,7 @@ runs:
         elif [[ "${{ github.event.action }}" == "edited" ]]; then
           echo "Pull request description updated."
           BODY=$(echo "$PR_BODY")
-          echo "body: $BODY"
+          echo "body: $BODY\npr_body: $PR_BODY"
         fi
 
         if [[ ! "$BODY" =~ "/jira-epic" ]]; then
