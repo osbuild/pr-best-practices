@@ -82,10 +82,11 @@ runs:
         fi
         set -e
         echo "Bail if the pull request body already contains a Jira reference."
-        if echo "$PR_BODY" | grep -qE "JIRA: [A-Z]+-[0-9]+"; then
+        if [[ $(echo "$PR_BODY" | sed -n 's/.*\b\(JIRA: [A-Z]\{2,\}-[0-9]\{1,\}\)\b.*/\1/p') ]]; then
           echo "⚪ The pull request description contains a Jira reference already, so we assume there's nothing to do."
           exit 0
         fi
+
         echo "🟢 The pull request title and description don't contain a Jira reference yet. Continue."
 
         EPIC_KEY=$(python3 "${{ github.action_path }}/extract_jira_key.py" "$PR_BODY")
