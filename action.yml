@@ -83,8 +83,8 @@ runs:
 
         echo "Bail if the pull request body already contains a Jira reference."
         python3 "${{ github.action_path }}/pr_best_practices.py" --pr-description-jira "$PR_BODY"
-        if [ "$?" == 0 ]; then
-          echo "⚪ The pull request title contains a Jira reference already, so we assume there's nothing to do."
+        if [ "$?" == 2 ]; then
+          echo "⚪ The pull request description contains a Jira reference already, so we assume there's nothing to do."
           exit 0;
         fi
         set -e
