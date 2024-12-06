@@ -49,6 +49,16 @@ def check_pr_description_not_empty(description):
         sys.exit(1)
 
 
+def check_pr_description_contains_jira(description):
+    regex = r"JIRA: \[[A-Z]*-[0-9]*\]\(https:\/\/issues.redhat.com\/browse\/[A-Z]*-[0-9]*\)"
+    match = re.search(regex, description)
+    if match:
+        print(f"Found a Jira reference in the PR description: '{match.group(0)}'")
+        sys.exit(2)
+    else:
+        print("The pull request description doesn't contain a Jira reference yet. Continue.")
+
+
 def add_best_practice_label(token, repository, pr_number):
     github_api_url = "https://api.github.com"
     url = f"{github_api_url}/repos/{repository}/issues/{pr_number}/labels"
@@ -72,6 +82,7 @@ if __name__ == "__main__":
     parser.add_argument("--pr-title", help="Check if PR title contains a Jira ticket")
     parser.add_argument("--check-commits", help="HEAD sha1 has of the pull request")
     parser.add_argument("--pr-description", help="Check if PR description is not empty")
+    parser.add_argument("--pr-description-jira", help="Check if PR description contains a Jira reference")
     parser.add_argument("--add-label", action="store_true", help="Add 'best-practice' label to the PR")
     parser.add_argument("--token", help="GitHub token")
     parser.add_argument("--repository", help="GitHub repository")
@@ -85,6 +96,8 @@ if __name__ == "__main__":
         check_commits_contain_jira(args.check_commits)
     if args.pr_description is not None:
         check_pr_description_not_empty(args.pr_description)
+    if args.pr_description_jira is not None:
+        check_pr_description_contains_jira(args.pr_description_jira)
     if args.add_label:
         if not (args.token and args.repository and args.pr_number):
             print("⛔ Token, repository, and PR number must be provided to add label.")

@@ -39,8 +39,8 @@ runs:
         fi
       shell: bash
 
-    - name: Check for /jira command in PR comments
-      if: github.event_name == 'issue_comment' && github.event.issue.pull_request != null
+    - name: Check for /jira command in PR comments and descriptions
+      if: ${{ github.event_name == 'issue_comment' && github.event.issue.pull_request != null || github.event_name == 'pull_request_target' && github.event.action == 'edited' }}
       env:
         REPOSITORY: ${{ github.event.repository.full_name }}
         PR_NUMBER: ${{ github.event.issue.number }}
@@ -48,28 +48,50 @@ runs:
         PR_BODY: ${{ github.event.issue.body }}
         PR_AUTHOR: "${{ github.event.issue.user.login }}"
         COMMENT_BODY: ${{ github.event.comment.body }}
+        PR_URL: ${{github.event.issue.url}}
         GITHUB_TOKEN: ${{ inputs.token }}
         JIRA_TOKEN: ${{ inputs.jira_token }}
       run: |
         set -euo pipefail
-        if [[ ! "$COMMENT_BODY" =~ ^/jira-epic ]]; then
-          echo "No recognized slash command found."
+        if [[ "${{ github.event_name }}" == "issue_comment" ]]; then
+          echo "Event: New comment added to pull request."
+        elif [[ "${{ github.event.action }}" == "edited" ]]; then
+          echo "Event: Pull request description updated."
+          # Override variables based on the pull_request event type
+          PR_TITLE=$(echo "${{ github.event.pull_request.title }}")
+          PR_BODY=$(echo "${{ github.event.pull_request.body }}")
+          PR_AUTHOR=$(echo "${{ github.event.pull_request.user.login }}")
+          PR_URL=$(echo "${{github.event.pull_request.url}}")
+        fi
+
+        if [[ ! "$PR_BODY" =~ "/jira-epic" ]]; then
+          echo "⚪ No recognized slash command found."
           exit 0
         fi
 
         echo "🟢 Slash command '/jira-epic' detected"
 
-        # Exit if PR title contains a Jira ticket
+        # Exit if PR title or description contain a Jira ticket already
         echo "Bail if the pull request title already contains a Jira reference."
         set +e
         python3 "${{ github.action_path }}/pr_best_practices.py" --pr-title "$PR_TITLE"
         if [ "$?" == 0 ]; then
+          echo "⚪ The pull request title contains a Jira reference already, so we assume there's nothing to do."
+          exit 0;
+        fi
+
+        echo "Bail if the pull request body already contains a Jira reference."
+        python3 "${{ github.action_path }}/pr_best_practices.py" --pr-description-jira "$PR_BODY"
+        if [ "$?" == 2 ]; then
+          echo "⚪ The pull request description contains a Jira reference already, so we assume there's nothing to do."
           exit 0;
         fi
         set -e
-        echo "🟢 The pull request title doesn't contain a Jira reference yet. Continue."
 
-        EPIC_KEY=$(echo "$COMMENT_BODY" | sed -n 's/.*\b\([A-Z]\{2,\}-[0-9]\{1,\}\)\b.*/\1/p')
+        echo "🟢 The pull request title and description don't contain a Jira reference yet. Continue."
+
+        EPIC_KEY=$(python3 "${{ github.action_path }}/extract_jira_key.py" "$PR_BODY")
+        echo "Creating a new Task under the Epic $EPIC_KEY"
         JIRA_KEY=$(python3 "${{ github.action_path }}/jira_bot.py" \
           --token "$JIRA_TOKEN" \
           --summary "$PR_TITLE" \
@@ -78,11 +100,11 @@ runs:
           --assignee "$PR_AUTHOR" \
           --assignees-yaml "${{ github.action_path }}/assignees.yaml")
 
-        # Add a rocket reaction to the comment
-        # Edit the PR title and body with the JIRA key
+        # Add a rocket reaction if the trigger was a comment
+        # Update the PR title and body with the Jira key of the newly created Task
         python3 "${{ github.action_path }}/update_pr.py" \
           --comment-url "${{github.event.comment.url}}" \
-          --issue-url "${{github.event.issue.url}}" \
+          --issue-url "$PR_URL" \
           --github-token "$GITHUB_TOKEN" \
           --pr-title "$PR_TITLE" \
           --pr-body "$PR_BODY" \

@@ -47,6 +47,7 @@ def is_epic_issue(jira, issue_key):
         if issue.fields.issuetype.name.lower() == 'epic':
             return True
         else:
+            print(f"The issue '{issue_key}' is not an Epic but a {issue.fields.issuetype.name}.", file=sys.stderr)
             return False
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
