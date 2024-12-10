@@ -50,7 +50,7 @@ def check_pr_description_not_empty(description):
 
 
 def check_pr_description_contains_jira(description):
-    regex = r"JIRA: \[[A-Z]*-[0-9]*\]\(https:\/\/issues.redhat.com\/browse\/[A-Z]*-[0-9]*\)"
+    regex = r"JIRA: \[[A-Z]+-[0-9]+\]\(https:\/\/issues.redhat.com\/browse\/[A-Z]+-[0-9]+\)"
     match = re.search(regex, description)
     if match:
         print(f"Found a Jira reference in the PR description: '{match.group(0)}'")
