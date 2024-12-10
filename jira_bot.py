@@ -106,6 +106,7 @@ def create_jira_task(token, project_key, summary, description, issue_type, epic_
     # pylint: disable=broad-exception-caught
     except Exception as e:
         print(f"🔴 Failed to create task: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 def main():
