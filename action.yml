@@ -100,7 +100,7 @@ runs:
       run: |
         set -euo pipefail
 
-        if [[ ! "$COMMENT_BODY" =~ "^/jira-epic" ]]; then
+        if [[ ! "$COMMENT_BODY" =~ "/jira-epic" ]]; then
           echo "⚪ No recognized slash command found."
           exit 0
         fi
