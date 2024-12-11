@@ -126,7 +126,7 @@ runs:
 
         echo "🟢 The pull request title and description don't contain a Jira reference yet. Continue."
 
-        EPIC_KEY=$(python3 "${{ github.action_path }}/extract_jira_key.py" "$PR_BODY")
+        EPIC_KEY=$(python3 "${{ github.action_path }}/extract_jira_key.py" "$COMMENT_BODY")
         echo "Creating a new Task under the Epic $EPIC_KEY"
         JIRA_KEY=$(python3 "${{ github.action_path }}/jira_bot.py" \
           --token "$JIRA_TOKEN" \
