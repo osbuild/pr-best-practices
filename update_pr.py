@@ -28,7 +28,7 @@ def process_github_event(comment_url, issue_url, github_token, pr_title, pr_body
 
     # Update the pull request title and body
     new_title = f"{pr_title} ({jira_key})"
-    new_body = f"{pr_body}<br/><br/>JIRA: [{jira_key}](https://issues.redhat.com/browse/{jira_key})"
+    new_body = f"{pr_body}\n\nJIRA: [{jira_key}](https://issues.redhat.com/browse/{jira_key})"
     issue_payload = {"title": new_title, "body": new_body}
     issue_response = requests.patch(
         issue_url,
