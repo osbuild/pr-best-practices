@@ -3,14 +3,23 @@
 import argparse
 import os
 import sys
+
 import yaml
 
 from jira import JIRA
+
+from gh_to_jira import GhToJira
 
 JIRA_SERVER = os.getenv("JIRA_SERVER", "https://issues.redhat.com")
 DEFAULT_PROJECT_KEY = os.getenv("DEFAULT_PROJECT_KEY", "HMS")
 DEFAULT_ISSUE_TYPE = os.getenv("DEFAULT_ISSUE_TYPE", "Task")
 DEFAULT_COMPONENT = os.getenv("DEFAULT_COMPONENT", "Image Builder")
+
+
+def remove_html(text):
+    parser = GhToJira()
+    parser.feed(text)
+    return str(parser)
 
 
 def load_assignee_mapping(file_path):
@@ -82,7 +91,7 @@ def create_jira_task(token, project_key, summary, description, issue_type, epic_
     issue_dict = {
         'project': {'key': project_key},
         'summary': summary,
-        'description': description,
+        'description': remove_html(description),
         'issuetype': {'name': issue_type},
         'customfield_12310243': story_points,
     }
