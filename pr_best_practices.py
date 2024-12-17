@@ -10,6 +10,7 @@ def check_jira_issues_public(text):
         url = f"https://issues.redhat.com/browse/{match}"
         res = requests.get(url)
 
+        # TBD: this does not work always - returns a javascript login-redirect with '200'
         if res.status_code != 200:
             print("⛔ Assumed issue {match!r} is not publicly accessible.")
 
@@ -33,10 +34,10 @@ def check_commits_contain_jira(head):
     for commit in commits:
         # We can directly mark commits that are empty
         if not commit.strip():
-            print(f"Commit message '{commit}' should contain a Jira.")
+            print(f"Found empty commit message.")
             continue
 
-        check_jira_issues_public(commit)
+        check_pr_title_contains_jira(commit)
 
 
 def check_pr_description_not_empty(description):
