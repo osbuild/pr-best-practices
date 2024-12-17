@@ -8,11 +8,12 @@ import requests
 def check_jira_issues_public(text):
     for match in re.findall(r"[A-Z][A-Z0-9]+-[0-9]+", text):
         url = f"https://issues.redhat.com/browse/{match}"
-        res = requests.get(url)
+        res = requests.get(url, allow_redirects=False)
 
-        # TBD: this does not work always - returns a javascript login-redirect with '200'
         if res.status_code != 200:
             print("⛔ Assumed issue {match!r} is not publicly accessible.")
+            return False
+    return True
 
 
 def check_pr_title_contains_jira(title):

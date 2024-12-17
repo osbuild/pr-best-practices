@@ -10,6 +10,7 @@ import requests
 from pr_best_practices import (
     check_pr_title_contains_jira,
     check_commits_contain_jira,
+    check_jira_issues_public,
     check_pr_description_not_empty,
     add_best_practice_label
 )
@@ -77,6 +78,14 @@ class TestPRChecks(unittest.TestCase):
             add_best_practice_label("mock_token", "mock_repo", 123)
             output = fake_stdout.getvalue().strip()
             self.assertEqual(output, "Label 'best-practice' added to PR successfully.")
+
+    def test_check_jira_issues_public(self):
+
+        output = io.StringIO()
+        with redirect_stdout(output):
+            self.assertFalse(check_jira_issues_public("myfile.py: Fix some issues (PR-123)"))
+        self.assertIn("is not publicly accessible", output.getvalue())
+        self.assertTrue(check_jira_issues_public("myfile.py: Fix some issues (HMS-1442)"))
 
 
 if __name__ == '__main__':
