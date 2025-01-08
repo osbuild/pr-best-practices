@@ -73,6 +73,8 @@ Those script can also be used from the command line.
  * [pr_best_practices.py](pr_best_practices.md)
  * [jira_bot.py](jira_bot.md)
  * [udpate_pr.py](update_pr.md)
+ * `extract_jira_key.py`
+   Extracts the jira key from the given text. The first argument is expected to be the whole text to process.
 
 ## License
 
