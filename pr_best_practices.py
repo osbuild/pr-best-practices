@@ -77,18 +77,37 @@ def add_best_practice_label(token, repository, pr_number):
     print("Label 'best-practice' added to PR successfully.")
 
 
+def format_help_as_md():
+    help_text = parser.format_help()
+    section = re.compile("^(.+):$")
+    ret = []
+    in_block = False
+    for line in help_text.split("\n"):
+        m = section.match(line)
+        if line.startswith("usage:"):
+            ret.append(line.replace("usage:", "# Usage\n```\n" + " "*6))
+            in_block = True
+        elif m:
+            ret.append(line.replace(m.group(0), f"# {m.group(1).capitalize()}\n```"))
+            in_block = True
+        elif in_block and len(line) == 0:
+            ret.append("```")
+            in_block = False
+        else:
+            ret.append(line)
+    return "\n".join(ret)
+
+
 if __name__ == "__main__":
     my_filename = os.path.basename(__file__)
     parser = argparse.ArgumentParser(
         description="Perform various checks and actions related to GitHub Pull Requests.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=f"""Example usages:
-
 python {my_filename} --pr-title "PR-123: Fix some issues"
 python {my_filename} --check-commits
 python {my_filename} --pr-description "This is a PR description"
-python {my_filename} --add-label --token "your_token" --repository "your_repository" --pr-number 123
-    """
+python {my_filename} --add-label --token "your_token" --repository "your_repository" --pr-number 123"""
     )
     parser.add_argument("--pr-title", help="Check if PR title contains a Jira ticket")
     parser.add_argument("--check-commits", help="HEAD sha1 has of the pull request")
@@ -98,8 +117,13 @@ python {my_filename} --add-label --token "your_token" --repository "your_reposit
     parser.add_argument("--token", help="GitHub token")
     parser.add_argument("--repository", help="GitHub repository")
     parser.add_argument("--pr-number", type=int, help="Pull Request number")
+    parser.add_argument("--help-md", help="Show help as Markdown", action="store_true")
 
     args = parser.parse_args()
+
+    if args.help_md:
+        print(format_help_as_md())
+        sys.exit(0)
 
     if args.pr_title:
         check_pr_title_contains_jira(args.pr_title)
