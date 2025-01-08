@@ -1,14 +1,17 @@
+# Usage
 ```
-usage: pr_best_practices.py [-h] [--pr-title PR_TITLE]
+       pr_best_practices.py [-h] [--pr-title PR_TITLE]
                             [--check-commits CHECK_COMMITS]
                             [--pr-description PR_DESCRIPTION]
                             [--pr-description-jira PR_DESCRIPTION_JIRA]
                             [--add-label] [--token TOKEN]
                             [--repository REPOSITORY] [--pr-number PR_NUMBER]
-
+                            [--help-md]
+```
 Perform various checks and actions related to GitHub Pull Requests.
 
-options:
+# Options
+```
   -h, --help            show this help message and exit
   --pr-title PR_TITLE   Check if PR title contains a Jira ticket
   --check-commits CHECK_COMMITS
@@ -23,12 +26,12 @@ options:
                         GitHub repository
   --pr-number PR_NUMBER
                         Pull Request number
-
-Example usages:
-
+  --help-md             Show help as Markdown
+```
+# Example usages
+```
 python pr_best_practices.py --pr-title "PR-123: Fix some issues"
 python pr_best_practices.py --check-commits
 python pr_best_practices.py --pr-description "This is a PR description"
 python pr_best_practices.py --add-label --token "your_token" --repository "your_repository" --pr-number 123
-    
 ```

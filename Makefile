@@ -11,16 +11,18 @@ help:
 GENERATED_MDs=pr_best_practices.md jira_bot.md update_pr.md
 
 %.md: %.py
-	@echo '```' >$@
-	python $< --help >> $@
-	@echo '```' >>$@
+	python $< --help-md > $@ 2>/dev/null || ( \
+	echo '```' > $@ ; \
+	python $< --help >> $@ ; \
+	echo '```' >>$@ \
+	)
 
 .PHONY: docs
 docs: $(GENERATED_MDs) ## update all generated docs
 
 .PHONY: clean
 clean:  ## clean all generated files
-	rm $(GENERATED_MDs)
+	rm -f $(GENERATED_MDs)
 
 .PHONY: check-docs
 check-docs: docs  ## check if all docs are up to date or fail otherwise.
