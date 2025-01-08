@@ -78,7 +78,18 @@ def add_best_practice_label(token, repository, pr_number):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Perform various checks and actions related to GitHub Pull Requests.")
+    my_filename = os.path.basename(__file__)
+    parser = argparse.ArgumentParser(
+        description="Perform various checks and actions related to GitHub Pull Requests.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=f"""Example usages:
+
+python {my_filename} --pr-title "PR-123: Fix some issues"
+python {my_filename} --check-commits
+python {my_filename} --pr-description "This is a PR description"
+python {my_filename} --add-label --token "your_token" --repository "your_repository" --pr-number 123
+    """
+    )
     parser.add_argument("--pr-title", help="Check if PR title contains a Jira ticket")
     parser.add_argument("--check-commits", help="HEAD sha1 has of the pull request")
     parser.add_argument("--pr-description", help="Check if PR description is not empty")
