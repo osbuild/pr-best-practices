@@ -1,6 +1,9 @@
 # GitHub Pull Request Checks and Actions Script
 
-This Python script allows you to perform various checks and actions related to GitHub Pull Requests (PRs) conveniently from the command line. You can use it to ensure that your PRs adhere to certain standards and best practices before merging them into your codebase.
+These Python scripts allow you to perform various checks and actions related to GitHub Pull Requests (PRs).
+You can use them to ensure that your PRs adhere to certain standards and best practices before merging them into your codebase.
+
+The simplest way to use this is by leveraging `action.yml` and integrate the scripts into your GitHub Actions workflow.
 
 ## Features
 
@@ -8,14 +11,44 @@ This Python script allows you to perform various checks and actions related to G
 - **Check Commits Contain Jira Ticket**: Scans the commits in the pull request to ensure each commit message contains a Jira ticket reference.
 - **Check PR Description Is Not Empty**: Ensures that the pull request description is not empty.
 - **Add 'best-practice' Label to PR**: Automatically adds the 'best-practice' label to the pull request on GitHub.
+- **Creates a new Jira Ticket**: If the command `/jira-epic YOURJIRAKEY-1234` is detected in the **description** or a **comment** a Jira **Task** is created under the given Jira **Epic** "YOURJIRAKEY-1234"
 
-## Prerequisites
+## Integration in your GitHub project
+
+create a file in `.github/workflows` e.g. `.github/workflows/pr_best_practices.yml`
+
+```
+name: "Verify PR best practices and check for `/jira-epic`"
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited]
+  issue_comment:
+    types: [created]
+
+jobs:
+  pr-best-practices:
+    runs-on: ubuntu-latest
+    steps:
+      - name: PR best practice check
+        uses: osbuild/pr-best-practices@main
+        with:
+          token: ${{ secrets.YOUR_GITHUB_ACCESS_TOKEN }}
+          jira_token: ${{ secrets.YOUR_JIRA_ACCESS_TOKEN }}
+```
+
+## Local use & Development
+
+Those script can also be used from the command line.
+
+### Local Prerequisites
 
 - Python 3 installed on your system.
 - Access to the GitHub repository where you want to perform these checks and actions.
 - Personal access token with the necessary permissions to interact with the GitHub API.
 
-## Installation
+### Local Installation
 
 1. Clone this repository to your local machine:
 
@@ -29,32 +62,17 @@ This Python script allows you to perform various checks and actions related to G
     cd github-pr-checks
     ```
 
-3. Install the required dependencies (requests module):
+3. Install the required dependencies:
 
     ```bash
-    pip install requests
+    pip install -r requirements.txt
     ```
 
-## Usage
+## Local Usage
 
-Run the script with appropriate command-line arguments to execute specific checks or actions. Below are the available options:
-
-- `--pr-title`: Check if the PR title contains a Jira ticket.
-- `--check-commits`: Check if commits contain a Jira ticket.
-- `--pr-description`: Check if the PR description is not empty.
-- `--add-label`: Add the 'best-practice' label to the PR.
-- `--token`: GitHub personal access token with necessary permissions.
-- `--repository`: GitHub repository where the PR exists.
-- `--pr-number`: Pull request number.
-
-Example usages:
-
-```bash
-python pr_checks.py --pr-title "PR-123: Fix some issues"
-python pr_checks.py --check-commits
-python pr_checks.py --pr-description "This is a PR description"
-python pr_checks.py --add-label --token "your_token" --repository "your_repository" --pr-number 123
-```
+ * [pr_best_practices.py](pr_best_practices.md)
+ * [jira_bot.py](jira_bot.md)
+ * [udpate_pr.py](update_pr.md)
 
 ## License
 
