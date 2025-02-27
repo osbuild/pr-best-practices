@@ -10,7 +10,7 @@ def extract_jira_issue_key(text):
     # Search for the pattern in the text
     match = re.search(pattern, text, re.IGNORECASE)
     # Return the captured group if a match is found
-    return match.group(1) if match else None
+    return match.group(1).upper() if match else None
 
 
 if __name__ == "__main__":
