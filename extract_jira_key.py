@@ -8,7 +8,7 @@ def extract_jira_issue_key(text):
     # regular expression to match the /jira-epic command and extract the issuekey
     pattern = r"/jira-epic (\b[A-Z]+-\d+\b)"
     # Search for the pattern in the text
-    match = re.search(pattern, text)
+    match = re.search(pattern, text, re.IGNORECASE)
     # Return the captured group if a match is found
     return match.group(1) if match else None
 
