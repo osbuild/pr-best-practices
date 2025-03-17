@@ -11,11 +11,17 @@ import requests
 import time
 import pickle
 import sys
+from jira import JIRA
 
 from ghapi.all import GhApi
 from fastcore.foundation import L
 
 from utils import format_help_as_md
+
+JIRA_HOST = os.getenv("JIRA_HOST", "https://issues.redhat.com")
+JIRA_TOKEN = os.getenv("JIRA_TOKEN")
+JIRA_TOPLEVEL_FILTER_ID = 12444600
+JIRA_CHILD_EPICS_JQL = "issue in childIssuesOf(\"{jira_key}\") AND type = Epic AND status != Done"
 
 if os.getenv("PR_BEST_PRACTICES_TEST_CACHE"):
     import requests_cache
@@ -181,9 +187,10 @@ def find_jira_key(pr_title, pr_html_url):
 
     return pr_title_link
 
-def cache_test_result(cache_key, function, **kwargs):
+def cached_result(cache_key, function, **kwargs):
     """
     Cache the result of a function call.
+    Only to be used for local testing!
     """
     if cache_all:
         result = GH_cache.get(cache_key)
@@ -204,7 +211,7 @@ def main():
     parser = argparse.ArgumentParser(allow_abbrev=False,
         description=__doc__,
         epilog="""You can set the `GITHUB_TOKEN` environment variable instead of using the `--github-token` argument.
-        You can also set the `PR_BEST_PRACTICES_TEST_CACHE` environment variable to anything (e.g. `1`) use the test cache.
+        You can also set the `PR_BEST_PRACTICES_TEST_CACHE` environment variable to anything (e.g. `1`) use the cache.
         """
     )
 
@@ -216,6 +223,8 @@ def main():
         token_arg_required = True
 
     parser.add_argument("--github-token", help="Set a token for github.com", required=token_arg_required)
+    parser.add_argument("--jira-host", help="The jira hostname to use", required=(JIRA_HOST is None))
+    parser.add_argument("--jira-token", help="Set the API token for jira", required=(JIRA_TOKEN is None))
     parser.add_argument("--org", help="Set an organisation on github.com", required=True)
     parser.add_argument("--repo", help="Set a repo in `--org` on github.com", required=False)
     parser.add_argument("--author", help="Author of pull requests", required=False)
@@ -235,7 +244,7 @@ def main():
 
     print(f"Fetching pull requests for {args.org}/{args.repo} assigned to {args.author}")
 
-    pull_request_list = cache_test_result(
+    pull_request_list = cached_result(
         "get_pull_request_list",
         get_pull_request_list,
         github_api=github_api,
@@ -265,6 +274,28 @@ def main():
             f" (+{pull_request['additions']}/-{pull_request['deletions']})"
         )
         print(entry)
+
+    jira = JIRA(JIRA_HOST, token_auth=JIRA_TOKEN)
+    jql = f'filter = {JIRA_TOPLEVEL_FILTER_ID}'
+    issues = cached_result("jira_search_issues", jira.search_issues, jql_str=jql)
+
+    #fields = cache_test_result("jira_fields", jira.fields)
+    #fieldmap = {f['id']: f['name'] for f in fields}
+
+    child_issues = {}
+    for i in issues:
+        print(f"Fetching children of {i.key}…")
+        child_issues[i.key] = cached_result(f"jira_epic_children_{i.key}", jira.search_issues, jql_str=JIRA_CHILD_EPICS_JQL.format(jira_key=i.key))
+        #for field_name in i.raw['fields']:
+        #    v = i.raw['fields'][field_name]
+        #    k = fieldmap.get(field_name, field_name)
+        #    if v is not None and v != "None" and v != "":
+        #        print(f"Field {k:>20}: {v}")
+    # print unique, sorted epics
+    print("All open Epics:")
+    for i in sorted(set([e for res in child_issues.values() for e in res]), key=lambda x: x.key):
+        print(f"  {i.key}: {i.fields.summary}")
+        print(f"            https://issues.redhat.com/browse/{i.key}")
 
 if __name__ == "__main__":
     main()
