@@ -187,9 +187,10 @@ def find_jira_key(pr_title, pr_html_url):
 
     return pr_title_link
 
-def cache_test_result(cache_key, function, **kwargs):
+def cached_result(cache_key, function, **kwargs):
     """
     Cache the result of a function call.
+    Only to be used for local testing!
     """
     if cache_all:
         result = GH_cache.get(cache_key)
@@ -210,7 +211,7 @@ def main():
     parser = argparse.ArgumentParser(allow_abbrev=False,
         description=__doc__,
         epilog="""You can set the `GITHUB_TOKEN` environment variable instead of using the `--github-token` argument.
-        You can also set the `PR_BEST_PRACTICES_TEST_CACHE` environment variable to anything (e.g. `1`) use the test cache.
+        You can also set the `PR_BEST_PRACTICES_TEST_CACHE` environment variable to anything (e.g. `1`) use the cache.
         """
     )
 
@@ -243,7 +244,7 @@ def main():
 
     print(f"Fetching pull requests for {args.org}/{args.repo} assigned to {args.author}")
 
-    pull_request_list = cache_test_result(
+    pull_request_list = cached_result(
         "get_pull_request_list",
         get_pull_request_list,
         github_api=github_api,
@@ -276,7 +277,7 @@ def main():
 
     jira = JIRA(JIRA_HOST, token_auth=JIRA_TOKEN)
     jql = f'filter = {JIRA_TOPLEVEL_FILTER_ID}'
-    issues = cache_test_result("jira_search_issues", jira.search_issues, jql_str=jql)
+    issues = cached_result("jira_search_issues", jira.search_issues, jql_str=jql)
 
     #fields = cache_test_result("jira_fields", jira.fields)
     #fieldmap = {f['id']: f['name'] for f in fields}
@@ -284,7 +285,7 @@ def main():
     child_issues = {}
     for i in issues:
         print(f"Fetching children of {i.key}…")
-        child_issues[i.key] = cache_test_result(f"jira_epic_children_{i.key}", jira.search_issues, jql_str=JIRA_CHILD_EPICS_JQL.format(jira_key=i.key))
+        child_issues[i.key] = cached_result(f"jira_epic_children_{i.key}", jira.search_issues, jql_str=JIRA_CHILD_EPICS_JQL.format(jira_key=i.key))
         #for field_name in i.raw['fields']:
         #    v = i.raw['fields'][field_name]
         #    k = fieldmap.get(field_name, field_name)
