@@ -11,6 +11,7 @@ import requests
 import time
 import pickle
 import sys
+import json
 from jira import JIRA
 
 from ghapi.all import GhApi
@@ -296,11 +297,29 @@ def main():
         #    if v is not None and v != "None" and v != "":
         #        print(f"Field {k:>20}: {v}")
     # print unique, sorted epics
-    print("All open Epics:")
-    for i in sorted(set([e for res in child_issues.values() for e in res]), key=lambda x: x.key):
+    unique_sorted_epics = sorted(set([e for res in child_issues.values() for e in res]), key=lambda x: x.key)
+    print(f"All open Epics: {len(unique_sorted_epics)}")
+    for i in unique_sorted_epics:
         print(f"  {i.key}: {i.fields.summary}")
         print(f"  {' ' * len(i.key)}  https://issues.redhat.com/browse/{i.key}")
+
         # print(f"            {i.fields.description}")
+
+    data_collection = {
+        "pull_requests": [
+            { 'url': item['html_url'],
+              'title': item['title'],
+              'description': item['description']
+            }  for item in pull_request_list if not jira_pattern.search(item['title'])],
+        "jira_issues": [
+            { 'key': i.key,
+              'summary': i.fields.summary,
+              'description': i.fields.description
+            } for i in unique_sorted_epics]
+    }
+
+    with open("data_collection.json", "w") as f:
+        f.write(json.dumps(data_collection))
 
 if __name__ == "__main__":
     main()

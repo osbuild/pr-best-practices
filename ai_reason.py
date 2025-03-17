@@ -16,13 +16,14 @@ def compute_embeddings(text_list):
 
 def build_jira_index(jira_issues):
     """Build an index for Jira issues with their embeddings."""
-    texts = [issue['description'] for issue in jira_issues]
+    texts = [f"{issue.get('summary', "")} {issue.get('description', "")}" for issue in jira_issues]
     embeddings = compute_embeddings(texts)
     index = []
     for idx, issue in enumerate(jira_issues):
         index.append({
-            'id': issue['id'],
-            'description': issue['description'],
+            'key': issue['key'],
+            'summary': issue.get('summary', ""),
+            'description': issue.get('description', ""),
             'embedding': embeddings[idx]
         })
     return index
@@ -39,7 +40,8 @@ def retrieve_relevant_issues(pr_description, jira_index, top_k=3, threshold=0.5)
     for idx in top_indices:
         if sims[idx] >= threshold:
             relevant.append({
-                'id': jira_index[idx]['id'],
+                'key': jira_index[idx]['key'],
+                'summary': jira_index[idx]['summary'],
                 'description': jira_index[idx]['description'],
                 'similarity': float(sims[idx])
             })
@@ -54,17 +56,18 @@ def generate_mapping_for_pr(pr, relevant_issues, model="mistral"):
 You are an expert at mapping GitHub pull requests to Jira issues based on their descriptions.
 
 Pull Request:
-ID: {pr['id']}
+URL: {pr['url']}
+Title: {pr['title']}
 Description: {pr['description']}
 
 Retrieved Jira Issues:
 {json.dumps(relevant_issues, indent=2)}
 
-If the pull request description clearly relates to any of these Jira issues, list the matching Jira issue IDs.
+If the pull request description clearly relates to any of these Jira issues, list the matching Jira issue KEYs.
 If not, output "No good match found for this pull request."
 
-Return your answer as a JSON object with the pull request ID as key and its value as either:
-- a list of matching Jira issue IDs, or
+Return your answer as a JSON object with the pull request URL as key and its value as either:
+- a list of matching Jira issue KEYs, or
 - the string "No good match found for this pull request."
 """
     payload = {
@@ -83,10 +86,11 @@ Return your answer as a JSON object with the pull request ID as key and its valu
             data = json.loads(line)
             result += data.get("response", "")
         mapping = json.loads(result)
-        return mapping.get(pr['id'], "No good match found for this pull request.")
+        return mapping.get(pr['url'], "No good match found for this pull request.")
     except Exception as e:
-        print(f"Error generating mapping for PR {pr['id']}: {e}")
+        print(f"Error generating mapping for PR {pr['url']}: {e}")
         return "No good match found for this pull request."
+
 
 def map_prs_to_jira_rag(prs, jira_issues, model="mistral", top_k=3, threshold=0.5):
     """
@@ -96,12 +100,13 @@ def map_prs_to_jira_rag(prs, jira_issues, model="mistral", top_k=3, threshold=0.
     jira_index = build_jira_index(jira_issues)
     final_mapping = {}
     for pr in prs:
-        relevant = retrieve_relevant_issues(pr['description'], jira_index, top_k=top_k, threshold=threshold)
+        data = f"{pr['title']} {pr['description']}"
+        relevant = retrieve_relevant_issues(data, jira_index, top_k=top_k, threshold=threshold)
         if not relevant:
-            final_mapping[pr['id']] = "No good match found for this pull request."
+            final_mapping[pr['url']] = "No good match found for this pull request."
         else:
             mapping = generate_mapping_for_pr(pr, relevant, model=model)
-            final_mapping[pr['id']] = mapping
+            final_mapping[pr['url']] = mapping
     return final_mapping
 
 if __name__ == "__main__":
@@ -110,6 +115,14 @@ if __name__ == "__main__":
         data = json.load(f)
     pull_requests = data['pull_requests']
     jira_issues = data['jira_issues']
-    mapping_result = map_prs_to_jira_rag(pull_requests, jira_issues, model="granite3-dense:2b", top_k=3, threshold=0.5)
+    mapping_result = map_prs_to_jira_rag(pull_requests, jira_issues, model="granite3-dense:2b", top_k=30, threshold=0.1)
     print("Final Mapping Result:")
-    print(json.dumps(mapping_result, indent=2))
+    # print(json.dumps(mapping_result, indent=2))
+    for k, v in mapping_result.items():
+        print(f"\n{k}:")
+        if isinstance(v, str):
+            print(v)
+        else:
+            for i in v:
+                print(f" https://issues.redhat.com/browse/{i}")
+
