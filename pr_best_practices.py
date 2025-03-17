@@ -3,7 +3,7 @@ import re
 import os
 import sys
 import requests
-
+from utils import format_help_as_md
 
 def check_jira_issues_public(text):
     for match in re.findall(r"[A-Z][A-Z0-9]+-[0-9]+", text):
@@ -77,27 +77,6 @@ def add_best_practice_label(token, repository, pr_number):
     print("Label 'best-practice' added to PR successfully.")
 
 
-def format_help_as_md():
-    help_text = parser.format_help()
-    section = re.compile("^(.+):$")
-    ret = []
-    in_block = False
-    for line in help_text.split("\n"):
-        m = section.match(line)
-        if line.startswith("usage:"):
-            ret.append(line.replace("usage:", "# Usage\n```\n" + " "*6))
-            in_block = True
-        elif m:
-            ret.append(line.replace(m.group(0), f"# {m.group(1).capitalize()}\n```"))
-            in_block = True
-        elif in_block and len(line) == 0:
-            ret.append("```")
-            in_block = False
-        else:
-            ret.append(line)
-    return "\n".join(ret)
-
-
 if __name__ == "__main__":
     my_filename = os.path.basename(__file__)
     parser = argparse.ArgumentParser(
@@ -122,7 +101,7 @@ python {my_filename} --add-label --token "your_token" --repository "your_reposit
     args = parser.parse_args()
 
     if args.help_md:
-        print(format_help_as_md())
+        print(format_help_as_md(parser))
         sys.exit(0)
 
     if args.pr_title:
