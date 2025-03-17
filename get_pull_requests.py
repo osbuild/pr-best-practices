@@ -17,7 +17,7 @@ from fastcore.foundation import L
 
 from utils import format_help_as_md
 
-if os.getenv("PR_BEST_PRACTICES_TEST"):
+if os.getenv("PR_BEST_PRACTICES_TEST_CACHE"):
     import requests_cache
     # NOTE: this will cache forever, until you remove the `test_cache.sqlite`
     requests_cache.install_cache(
@@ -201,7 +201,11 @@ class CustomEncoder(json.JSONEncoder):
 
 def main():
     """Return a list of pull requests for a given organisation, repository and assignee"""
-    parser = argparse.ArgumentParser(allow_abbrev=False)
+    parser = argparse.ArgumentParser(allow_abbrev=False,
+        description=__doc__,
+    epilog="""You can set the `GITHUB_TOKEN` environment variable instead of using the `--github-token` argument.
+    You can also set the `PR_BEST_PRACTICES_TEST_CACHE` environment variable to anything (e.g. `1`) use the test cache.
+    """)
 
     # GhApi() supports pulling the token out of the env - so if it's
     # set - we don't need to force this in the params
