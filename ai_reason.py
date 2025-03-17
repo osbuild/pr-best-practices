@@ -9,6 +9,7 @@ embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 
 # URL for the Ollama API endpoint – adjust as needed.
 API_URL = "http://localhost:11434/api/generate"
+DEBUG = True
 
 def compute_embeddings(text_list):
     """Compute embeddings for a list of texts."""
@@ -53,12 +54,12 @@ def generate_mapping_for_pr(pr, relevant_issues, model="mistral"):
     generate a mapping using the LLM.
     """
     prompt = f"""
-You are an expert at mapping GitHub pull requests to Jira issues based on their descriptions.
+You are an expert at mapping a GitHub pull request to Jira issues based on their descriptions, title and summary.
 
 Pull Request:
-URL: {pr['url']}
-Title: {pr['title']}
-Description: {pr['description']}
+URL: "{pr['url'].replace("\"", "'")}"
+Title: "{pr['title'].replace("\"", "'")}"
+Description: "{pr['description'].replace("\"", "'")}"
 
 Retrieved Jira Issues:
 {json.dumps(relevant_issues, indent=2)}
@@ -69,6 +70,13 @@ If not, output "No good match found for this pull request."
 Return your answer as a JSON object with the pull request URL as key and its value as either:
 - a list of matching Jira issue KEYs, or
 - the string "No good match found for this pull request."
+- never return a Jira issue KEY that was not retrieved.
+- never return both "No good match found for this pull request." and a list of Jira issue KEYs.
+
+The output format should look like this:
+{{
+    "{pr['url']}": ["JIRA-123", "JIRA-456"]
+}}
 """
     payload = {
         "model": model,
@@ -76,19 +84,50 @@ Return your answer as a JSON object with the pull request URL as key and its val
         "temperature": 0.0,
         "max_tokens": 200
     }
+    print(f"Thinking about {pr['url']}: \"{pr['title'].replace("\"", "'")}\"…")
     try:
-        response = requests.post(API_URL, json=payload)
-        response.raise_for_status()
+        response = requests.post(API_URL, json=payload, stream=True)
         result = ""
-        for line in response.text.split("\n"):
+        for line in response.iter_lines():
             if not line:
                 continue
-            data = json.loads(line)
-            result += data.get("response", "")
-        mapping = json.loads(result)
+            decoded_line = line.decode('utf-8')
+            data = json.loads(decoded_line)
+            response = data.get("response", "")
+            print(response, end="", flush=True)
+            result += response
+        # support for deepseek - filter out the <think>...</think> content
+        # also sometimes the output is in a markdown code block, so filter that out too
+        real_result = ""
+        output = True
+        for line in result.split("\n"):
+            if "<think>" in line:
+                output = False
+                continue
+            if "</think>" in line:
+                output = True
+                continue
+            if line in ["```", "```json"]:
+                continue
+            if output:
+                real_result += line
+
+        mapping = json.loads(real_result)
+        print ("\n----")
         return mapping.get(pr['url'], "No good match found for this pull request.")
     except Exception as e:
         print(f"Error generating mapping for PR {pr['url']}: {e}")
+        try:
+            print(line)
+        except:
+            try:
+                print(response.text)
+            except:
+                try:
+                    print(result)
+                except:
+                    pass
+        print("----")
         return "No good match found for this pull request."
 
 
@@ -115,14 +154,23 @@ if __name__ == "__main__":
         data = json.load(f)
     pull_requests = data['pull_requests']
     jira_issues = data['jira_issues']
-    mapping_result = map_prs_to_jira_rag(pull_requests, jira_issues, model="granite3-dense:2b", top_k=30, threshold=0.1)
+    # model="granite3-dense:2b"
+    # model="granite3.2:8b"
+    model = "deepseek-r1:7b"
+    mapping_result = map_prs_to_jira_rag(pull_requests, jira_issues, model=model, top_k=5, threshold=0)
     print("Final Mapping Result:")
     # print(json.dumps(mapping_result, indent=2))
+    prefix = " https://issues.redhat.com/browse/"
+
     for k, v in mapping_result.items():
         print(f"\n{k}:")
+        if k not in [p['url'] for p in pull_requests]:
+            print(f"{"^"* len(k)} HALLUCINATION")
         if isinstance(v, str):
             print(v)
         else:
             for i in v:
-                print(f" https://issues.redhat.com/browse/{i}")
+                print(f"{prefix}{i}")
+                if i not in [j['key'] for j in jira_issues]:
+                    print(f"{" " * len(prefix)}{"^"* len(i)} HALLUCINATION")
 

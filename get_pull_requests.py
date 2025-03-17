@@ -22,7 +22,7 @@ from utils import format_help_as_md
 JIRA_HOST = os.getenv("JIRA_HOST", "https://issues.redhat.com")
 JIRA_TOKEN = os.getenv("JIRA_TOKEN")
 JIRA_TOPLEVEL_FILTER_ID = 12444600
-JIRA_CHILD_EPICS_JQL = "issue in childIssuesOf(\"{jira_key}\") AND type = Epic AND status != Done"
+JIRA_CHILD_EPICS_JQL = "(issue in childIssuesOf(\"{jira_key}\") OR issue in childIssuesOf(\"COMPOSER-2246\")) AND type = Epic AND status != Closed"
 
 if os.getenv("PR_BEST_PRACTICES_TEST_CACHE"):
     import requests_cache
