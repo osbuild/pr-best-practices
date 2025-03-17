@@ -1,7 +1,8 @@
 # Usage
 ```
-       get_pull_requests.py [-h] [--github-token GITHUB_TOKEN] --org ORG
-                            [--repo REPO] [--author AUTHOR]
+       get_pull_requests.py [-h] [--github-token GITHUB_TOKEN]
+                            [--jira-host JIRA_HOST] [--jira-token JIRA_TOKEN]
+                            --org ORG [--repo REPO] [--author AUTHOR]
                             [--dry-run | --no-dry-run] [--help-md]
 ```
 Small script to return all pull requests for a given organisation, repository
@@ -12,6 +13,10 @@ and assignee
   -h, --help            show this help message and exit
   --github-token GITHUB_TOKEN
                         Set a token for github.com
+  --jira-host JIRA_HOST
+                        The jira hostname to use
+  --jira-token JIRA_TOKEN
+                        Set the API token for jira
   --org ORG             Set an organisation on github.com
   --repo REPO           Set a repo in `--org` on github.com
   --author AUTHOR       Author of pull requests
