@@ -1,2 +1,5 @@
 __pycache__
 .idea
+test_cache.pkl
+test_cache.sqlite
+

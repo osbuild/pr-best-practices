@@ -23,6 +23,7 @@ docs: $(GENERATED_MDs) ## update all generated docs
 .PHONY: clean
 clean:  ## clean all generated files
 	rm -f $(GENERATED_MDs)
+	rm -f test_cache.pkl test_cache.sqlite
 
 .PHONY: check-docs
 check-docs: docs  ## check if all docs are up to date or fail otherwise.
