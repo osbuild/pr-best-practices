@@ -70,6 +70,7 @@ Those script can also be used from the command line.
 
 ## Local Usage
 
+ * [get_pull_requests.py](get_pull_requests.md)
  * [pr_best_practices.py](pr_best_practices.md)
  * [jira_bot.py](jira_bot.md)
  * [udpate_pr.py](update_pr.md)

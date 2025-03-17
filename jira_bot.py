@@ -6,6 +6,7 @@ import sys
 import yaml
 
 from jira import JIRA
+from utils import format_help_as_md
 
 JIRA_SERVER = os.getenv("JIRA_SERVER", "https://issues.redhat.com")
 DEFAULT_PROJECT_KEY = os.getenv("DEFAULT_PROJECT_KEY", "HMS")
@@ -133,6 +134,12 @@ def main():
                         help=f"The component (default: '{DEFAULT_COMPONENT}').")
     parser.add_argument('--assignees-yaml', default='assignees.yaml',
                         help="Path to the YAML file containing GitHub-to-Jira username mappings (default: assignees.yaml).")
+    parser.add_argument("--help-md", help="Show help as Markdown", action="store_true")
+
+    # workaround that required attribute are not given for --help-md
+    if "--help-md" in sys.argv:
+        print(format_help_as_md(parser))
+        sys.exit(0)
 
     args = parser.parse_args()
 
