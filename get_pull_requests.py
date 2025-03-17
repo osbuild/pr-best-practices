@@ -15,6 +15,8 @@ import sys
 from ghapi.all import GhApi
 from fastcore.foundation import L
 
+from utils import format_help_as_md
+
 if os.getenv("PR_BEST_PRACTICES_TEST"):
     import requests_cache
     # NOTE: this will cache forever, until you remove the `test_cache.sqlite`
@@ -214,8 +216,14 @@ def main():
     parser.add_argument("--author", help="Author of pull requests", required=False)
     parser.add_argument("--dry-run", help="Don't send Slack notifications", default=False,
                         action=argparse.BooleanOptionalAction)
-    args = parser.parse_args()
+    parser.add_argument("--help-md", help="Show help as Markdown", action="store_true")
 
+    # workaround that required attribute are not given for --help-md
+    if "--help-md" in sys.argv:
+        print(format_help_as_md(parser))
+        sys.exit(0)
+
+    args = parser.parse_args()
     # pylint: disable=global-statement
 
     github_api = GhApi(owner=args.org, token=args.github_token)

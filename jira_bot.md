@@ -1,13 +1,15 @@
+# Usage
 ```
-usage: jira_bot.py [-h] --token TOKEN [--project-key PROJECT_KEY] --summary
+       jira_bot.py [-h] --token TOKEN [--project-key PROJECT_KEY] --summary
                    SUMMARY --description DESCRIPTION [--issuetype ISSUETYPE]
                    [--assignee ASSIGNEE] [--story-points STORY_POINTS]
                    --epic-link EPIC_LINK [--component COMPONENT]
-                   [--assignees-yaml ASSIGNEES_YAML]
-
+                   [--assignees-yaml ASSIGNEES_YAML] [--help-md]
+```
 Create a Jira task.
 
-options:
+# Options
+```
   -h, --help            show this help message and exit
   --token TOKEN         The Jira personal access token
   --project-key PROJECT_KEY
@@ -27,4 +29,5 @@ options:
   --assignees-yaml ASSIGNEES_YAML
                         Path to the YAML file containing GitHub-to-Jira
                         username mappings (default: assignees.yaml).
+  --help-md             Show help as Markdown
 ```
