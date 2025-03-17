@@ -10,6 +10,7 @@ import re
 import requests
 
 from ghapi.all import GhApi
+from fastcore.foundation import L
 
 if os.getenv("PR_BEST_PRACTICES_TEST"):
     import requests_cache
@@ -19,6 +20,12 @@ if os.getenv("PR_BEST_PRACTICES_TEST"):
         backend='sqlite',
         expire_after=None,
     )
+    cache_all = True
+    GH_cache_file = "test_cache_gh.json"
+    GH_cache = json.load(open(GH_cache_file)) if os.path.exists(GH_cache_file) else {}
+    save_cache = False
+else:
+    cache_all = False
 
 def get_archived_repos(github_api, org):
     """
@@ -166,6 +173,26 @@ def find_jira_key(pr_title, pr_html_url):
 
     return pr_title_link
 
+def cache_GH_result(cache_key, function, **kwargs):
+    """
+    Cache the result of a function call.
+    """
+    if cache_all:
+        result = GH_cache.get(cache_key)
+    else:
+        result = None
+    if result is None:
+        result = function(**kwargs)
+        save_cache = True
+    if cache_all:
+        GH_cache[cache_key] = result
+    return result
+
+class CustomEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, L):
+            return str(obj)
+        return super().default(obj)
 
 def main():
     """Return a list of pull requests for a given organisation, repository and assignee"""
@@ -190,8 +217,16 @@ def main():
 
     github_api = GhApi(owner=args.org, token=args.github_token)
 
-    print (f"Fetching pull requests for {args.org}/{args.repo} assigned to {args.author}")
-    pull_request_list = get_pull_request_list(github_api, args.org, args.repo, args.author)
+    print(f"Fetching pull requests for {args.org}/{args.repo} assigned to {args.author}")
+
+    pull_request_list = cache_GH_result(
+        "get_pull_request_list",
+        get_pull_request_list,
+        github_api=github_api,
+        org=args.org,
+        repo=args.repo,
+        author=args.author
+    )
 
     jira_pattern = re.compile(r"\b[A-Z]+-\d+\b")
     with_jira = [item for item in pull_request_list if jira_pattern.search(item['title'])]
@@ -214,6 +249,9 @@ def main():
             f" (+{pull_request['additions']}/-{pull_request['deletions']})"
         )
         print(entry)
+    if save_cache:
+        with open(GH_cache_file, "w") as f:
+            json.dump(GH_cache, f, cls=CustomEncoder)
 
 if __name__ == "__main__":
     main()
