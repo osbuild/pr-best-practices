@@ -1,3 +1,5 @@
 jira
 requests
 requests_cache
+numpy
+sentence_transformers
