@@ -114,6 +114,7 @@ def get_pull_request_properties(github_api, pull_request, org, repo):
     #pr_properties["changes_requested"] = get_review_state(github_api, repo, pull_request, "CHANGES_REQUESTED")
     #pr_properties["approved"] = get_review_state(github_api, repo, pull_request, "APPROVED")
     #pr_properties["status"], pr_properties["state"] = get_commit_status(github_api, repo, pull_request_details)#
+    pr_properties["description"] = pull_request.body
 
     return pr_properties
 
@@ -257,7 +258,7 @@ def main():
     with_jira = [item for item in pull_request_list if jira_pattern.search(item['title'])]
     without_jira = [item for item in pull_request_list if not jira_pattern.search(item['title'])]
 
-    print("# Pull requests with Jira keys:")
+    print(f"# Pull requests with Jira keys: {len(with_jira)}")
     for pull_request in with_jira:
         pr_title_link = find_jira_key(pull_request['title'], pull_request['html_url'])
         entry = (
@@ -266,7 +267,8 @@ def main():
         )
         print(entry)
     
-    print("# Pull requests without Jira keys:")
+    print()
+    print(f"# Pull requests without Jira keys: {len(without_jira)}")
     for pull_request in without_jira:
         pr_title_link = find_jira_key(pull_request['title'], pull_request['html_url'])
         entry = (
@@ -274,6 +276,8 @@ def main():
             f" (+{pull_request['additions']}/-{pull_request['deletions']})"
         )
         print(entry)
+        # use "description" for an AI to find a match to an epic?
+        # print(f"  {pull_request.get('description', '-- No description --')}")
 
     jira = JIRA(JIRA_HOST, token_auth=JIRA_TOKEN)
     jql = f'filter = {JIRA_TOPLEVEL_FILTER_ID}'
@@ -295,7 +299,8 @@ def main():
     print("All open Epics:")
     for i in sorted(set([e for res in child_issues.values() for e in res]), key=lambda x: x.key):
         print(f"  {i.key}: {i.fields.summary}")
-        print(f"            https://issues.redhat.com/browse/{i.key}")
+        print(f"  {' ' * len(i.key)}  https://issues.redhat.com/browse/{i.key}")
+        # print(f"            {i.fields.description}")
 
 if __name__ == "__main__":
     main()
