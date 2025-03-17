@@ -4,6 +4,9 @@
                             [--repo REPO] [--author AUTHOR]
                             [--dry-run | --no-dry-run] [--help-md]
 ```
+Small script to return all pull requests for a given organisation, repository
+and assignee
+
 # Options
 ```
   -h, --help            show this help message and exit
@@ -16,3 +19,7 @@
                         Don't send Slack notifications
   --help-md             Show help as Markdown
 ```
+You can set the `GITHUB_TOKEN` environment variable instead of using the
+`--github-token` argument. You can also set the `PR_BEST_PRACTICES_TEST_CACHE`
+environment variable to anything (e.g. `1`) use the test cache.
+

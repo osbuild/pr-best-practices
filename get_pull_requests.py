@@ -9,7 +9,7 @@ import os
 import re
 import requests
 import time
-import json
+import pickle
 import sys
 
 from ghapi.all import GhApi
@@ -17,7 +17,7 @@ from fastcore.foundation import L
 
 from utils import format_help_as_md
 
-if os.getenv("PR_BEST_PRACTICES_TEST"):
+if os.getenv("PR_BEST_PRACTICES_TEST_CACHE"):
     import requests_cache
     # NOTE: this will cache forever, until you remove the `test_cache.sqlite`
     requests_cache.install_cache(
@@ -26,9 +26,12 @@ if os.getenv("PR_BEST_PRACTICES_TEST"):
         expire_after=None,
     )
     cache_all = True
-    GH_cache_file = "test_cache_gh.json"
-    GH_cache = json.load(open(GH_cache_file)) if os.path.exists(GH_cache_file) else {}
-    save_cache = False
+    GH_cache_file = "test_cache.pkl"
+    if os.path.exists(GH_cache_file):
+        with open(GH_cache_file, "rb") as f:
+            GH_cache = pickle.load(f)
+    else:
+        GH_cache = {}
 else:
     cache_all = False
 
@@ -178,7 +181,7 @@ def find_jira_key(pr_title, pr_html_url):
 
     return pr_title_link
 
-def cache_GH_result(cache_key, function, **kwargs):
+def cache_test_result(cache_key, function, **kwargs):
     """
     Cache the result of a function call.
     """
@@ -188,20 +191,22 @@ def cache_GH_result(cache_key, function, **kwargs):
         result = None
     if result is None:
         result = function(**kwargs)
-        save_cache = True
-    if cache_all:
-        GH_cache[cache_key] = result
-    return result
+        if cache_all:
+            GH_cache[cache_key] = result
+            # better save now, so it's not lost if the script crashes
+            with open(GH_cache_file, "wb") as f:
+                pickle.dump(GH_cache, f)
 
-class CustomEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, L):
-            return str(obj)
-        return super().default(obj)
+    return result
 
 def main():
     """Return a list of pull requests for a given organisation, repository and assignee"""
-    parser = argparse.ArgumentParser(allow_abbrev=False)
+    parser = argparse.ArgumentParser(allow_abbrev=False,
+        description=__doc__,
+        epilog="""You can set the `GITHUB_TOKEN` environment variable instead of using the `--github-token` argument.
+        You can also set the `PR_BEST_PRACTICES_TEST_CACHE` environment variable to anything (e.g. `1`) use the test cache.
+        """
+    )
 
     # GhApi() supports pulling the token out of the env - so if it's
     # set - we don't need to force this in the params
@@ -230,7 +235,7 @@ def main():
 
     print(f"Fetching pull requests for {args.org}/{args.repo} assigned to {args.author}")
 
-    pull_request_list = cache_GH_result(
+    pull_request_list = cache_test_result(
         "get_pull_request_list",
         get_pull_request_list,
         github_api=github_api,
@@ -260,9 +265,6 @@ def main():
             f" (+{pull_request['additions']}/-{pull_request['deletions']})"
         )
         print(entry)
-    if save_cache:
-        with open(GH_cache_file, "w") as f:
-            json.dump(GH_cache, f, cls=CustomEncoder)
 
 if __name__ == "__main__":
     main()
