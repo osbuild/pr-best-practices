@@ -11,6 +11,15 @@ import requests
 
 from ghapi.all import GhApi
 
+if os.getenv("PR_BEST_PRACTICES_TEST"):
+    import requests_cache
+    # NOTE: this will cache forever, until you remove the `test_cache.sqlite`
+    requests_cache.install_cache(
+        'test_cache',
+        backend='sqlite',
+        expire_after=None,
+    )
+
 def get_archived_repos(github_api, org):
     """
     Return a list of archived or disabled repositories
