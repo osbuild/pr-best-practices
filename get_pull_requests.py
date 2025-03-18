@@ -17,12 +17,16 @@ from jira import JIRA
 from ghapi.all import GhApi
 from fastcore.foundation import L
 
-from utils import format_help_as_md
+from utils import format_help_as_md, Cache
 
 JIRA_HOST = os.getenv("JIRA_HOST", "https://issues.redhat.com")
 JIRA_TOKEN = os.getenv("JIRA_TOKEN")
 JIRA_TOPLEVEL_FILTER_ID = 12444600
 JIRA_CHILD_EPICS_JQL = "(issue in childIssuesOf(\"{jira_key}\") OR issue in childIssuesOf(\"COMPOSER-2246\")) AND type = Epic AND status != Closed"
+
+# following two are redundant, just as a consistency check
+JIRA_PARENT_LINK_FIELD_NAME = "Parent Link"
+JIRA_PARENT_LINK_FIELD = "customfield_12313140"
 
 if os.getenv("PR_BEST_PRACTICES_TEST_CACHE"):
     import requests_cache
@@ -32,15 +36,9 @@ if os.getenv("PR_BEST_PRACTICES_TEST_CACHE"):
         backend='sqlite',
         expire_after=None,
     )
-    cache_all = True
-    GH_cache_file = "test_cache.pkl"
-    if os.path.exists(GH_cache_file):
-        with open(GH_cache_file, "rb") as f:
-            GH_cache = pickle.load(f)
-    else:
-        GH_cache = {}
+    cache = Cache("test_cache.pkl")
 else:
-    cache_all = False
+    cache = Cache(None) # indicates not to use cache
 
 def get_archived_repos(github_api, org):
     """
@@ -117,6 +115,9 @@ def get_pull_request_properties(github_api, pull_request, org, repo):
     #pr_properties["status"], pr_properties["state"] = get_commit_status(github_api, repo, pull_request_details)#
     pr_properties["description"] = pull_request.body
 
+    # TBD: when the PR contains a Jira key or other PR reference
+    # this additional info should be fetched and fed to pr_properties/AI too.
+
     return pr_properties
 
 
@@ -189,25 +190,6 @@ def find_jira_key(pr_title, pr_html_url):
 
     return pr_title_link
 
-def cached_result(cache_key, function, **kwargs):
-    """
-    Cache the result of a function call.
-    Only to be used for local testing!
-    """
-    if cache_all:
-        result = GH_cache.get(cache_key)
-    else:
-        result = None
-    if result is None:
-        result = function(**kwargs)
-        if cache_all:
-            GH_cache[cache_key] = result
-            # better save now, so it's not lost if the script crashes
-            with open(GH_cache_file, "wb") as f:
-                pickle.dump(GH_cache, f)
-
-    return result
-
 def main():
     """Return a list of pull requests for a given organisation, repository and assignee"""
     parser = argparse.ArgumentParser(allow_abbrev=False,
@@ -246,7 +228,7 @@ def main():
 
     print(f"Fetching pull requests for {args.org}/{args.repo} assigned to {args.author}")
 
-    pull_request_list = cached_result(
+    pull_request_list = cache.cached_result(
         "get_pull_request_list",
         get_pull_request_list,
         github_api=github_api,
@@ -282,15 +264,19 @@ def main():
 
     jira = JIRA(JIRA_HOST, token_auth=JIRA_TOKEN)
     jql = f'filter = {JIRA_TOPLEVEL_FILTER_ID}'
-    issues = cached_result("jira_search_issues", jira.search_issues, jql_str=jql)
+    issues = cache.cached_result("jira_search_issues", jira.search_issues, jql_str=jql)
 
-    #fields = cache_test_result("jira_fields", jira.fields)
-    #fieldmap = {f['id']: f['name'] for f in fields}
+    fields = cache.cached_result("jira_fields", jira.fields)
+    fieldmap = {f['id']: f['name'] for f in fields}
+    if JIRA_PARENT_LINK_FIELD not in fieldmap or fieldmap[JIRA_PARENT_LINK_FIELD] != JIRA_PARENT_LINK_FIELD_NAME:
+        print(f"ERROR: Field {JIRA_PARENT_LINK_FIELD} is not {JIRA_PARENT_LINK_FIELD_NAME}.")
+        print(f"Jira changed somehow, please update the script.")
+        sys.exit(1)
 
     child_issues = {}
     for i in issues:
         print(f"Fetching children of {i.key}…")
-        child_issues[i.key] = cached_result(f"jira_epic_children_{i.key}", jira.search_issues, jql_str=JIRA_CHILD_EPICS_JQL.format(jira_key=i.key))
+        child_issues[i.key] = cache.cached_result(f"jira_epic_children_{i.key}", jira.search_issues, jql_str=JIRA_CHILD_EPICS_JQL.format(jira_key=i.key))
         #for field_name in i.raw['fields']:
         #    v = i.raw['fields'][field_name]
         #    k = fieldmap.get(field_name, field_name)
@@ -298,29 +284,82 @@ def main():
         #        print(f"Field {k:>20}: {v}")
     # print unique, sorted epics
     unique_sorted_epics = sorted(set([e for res in child_issues.values() for e in res]), key=lambda x: x.key)
+    related_issues = {}
     print(f"All open Epics: {len(unique_sorted_epics)}")
     for i in unique_sorted_epics:
         print(f"  {i.key}: {i.fields.summary}")
         print(f"  {' ' * len(i.key)}  https://issues.redhat.com/browse/{i.key}")
+        print(f"            {fieldmap['customfield_12313140']}: {i.fields.customfield_12313140}")
+        parent = getattr(i.fields, JIRA_PARENT_LINK_FIELD, None)
+        if parent and parent not in related_issues.keys():
+            related_issues[parent] = cache.cached_result(f"jira_issue_{parent}", jira.issue, id=parent)
 
-        # print(f"            {i.fields.description}")
-    # TBD: when the PR contains a Jira key or other PR reference
-    # this additional info should be fed to AI too.
+    # get all the parents for more context
+    print("Fetching related issues…")
+    get_more = True
+    while get_more:
+        get_more = False
+        for i in list(related_issues.values()): # doing list to make a copy
+            parent = getattr(i.fields, JIRA_PARENT_LINK_FIELD, None)
+            if parent and parent not in related_issues.keys():
+                related_issues[parent] = cache.cached_result(f"jira_issue_{parent}", jira.issue, id=parent)
+                get_more = True
+
     data_collection = {
         "pull_requests": [
             { 'url': item['html_url'],
               'title': item['title'],
               'description': item['description']
-            }  for item in pull_request_list if not jira_pattern.search(item['title'])],
+            }  for item in pull_request_list if not jira_pattern.search(item['title'])
+        ],
         "jira_issues": [
             { 'key': i.key,
               'summary': i.fields.summary,
-              'description': i.fields.description
-            } for i in unique_sorted_epics]
+              'description': i.fields.description,
+              'parent': getattr(i.fields, JIRA_PARENT_LINK_FIELD, None)
+            } for i in unique_sorted_epics
+        ],
+        "related_issues": {
+            k: { 'key': k, # "duplicate" the key for easier access
+                 'summary': v.fields.summary,
+                 'description': v.fields.description,
+                 'parent': getattr(v.fields, JIRA_PARENT_LINK_FIELD, None)
+            } for k, v in related_issues.items()
+        }
+    }
+
+    # for reference/testing - data with already linked PRs
+    data_collection_jira = {
+        "pull_requests": [
+            { 'url': item['html_url'],
+              'title': item['title'],
+              'description': item['description']
+            }  for item in pull_request_list if jira_pattern.search(item['title'])
+        ],
+        "jira_issues": [
+            { 'key': i.key,
+              'summary': i.fields.summary,
+              'description': i.fields.description,
+              'parent': getattr(i.fields, JIRA_PARENT_LINK_FIELD, None)
+            } for i in unique_sorted_epics
+        ],
+        "related_issues": {
+            k: { 'key': k, # "duplicate" the key for easier access
+                 'summary': v.fields.summary,
+                 'description': v.fields.description,
+                 'parent': getattr(v.fields, JIRA_PARENT_LINK_FIELD, None)
+            } for k, v in related_issues.items()
+        }
     }
 
     with open("data_collection.json", "w") as f:
         f.write(json.dumps(data_collection))
+    with open("data_collection_already_linked.json", "w") as f:
+        f.write(json.dumps(data_collection_jira))
+
+    print(f"Stats:")
+    print(f"Open Epics: {len(unique_sorted_epics)}")
+    print(f"Related Issues: {len(related_issues)}")
 
 if __name__ == "__main__":
     main()
