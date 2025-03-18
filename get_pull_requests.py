@@ -304,7 +304,8 @@ def main():
         print(f"  {' ' * len(i.key)}  https://issues.redhat.com/browse/{i.key}")
 
         # print(f"            {i.fields.description}")
-
+    # TBD: when the PR contains a Jira key or other PR reference
+    # this additional info should be fed to AI too.
     data_collection = {
         "pull_requests": [
             { 'url': item['html_url'],

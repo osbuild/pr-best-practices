@@ -3,6 +3,7 @@ import json
 import numpy as np
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
+from transformers import AutoTokenizer
 
 # Initialize the embedding model (ensure you have the required package installed)
 embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
@@ -17,7 +18,7 @@ def compute_embeddings(text_list):
 
 def build_jira_index(jira_issues):
     """Build an index for Jira issues with their embeddings."""
-    texts = [f"{issue.get('summary', "")} {issue.get('description', "")}" for issue in jira_issues]
+    texts = [f"{issue.get('summary', "")}.\n{issue.get('description', "")}" for issue in jira_issues]
     embeddings = compute_embeddings(texts)
     index = []
     for idx, issue in enumerate(jira_issues):
@@ -78,6 +79,9 @@ The output format should look like this:
     "{pr['url']}": ["JIRA-123", "JIRA-456"]
 }}
 """
+    tokenizer = AutoTokenizer.from_pretrained("deepseek-ai/DeepSeek-R1")
+    tokens = tokenizer.encode(prompt)
+    print(f"Current prompt: {len(prompt.split())} words = {len(tokens)} tokens")
     payload = {
         "model": model,
         "prompt": prompt,
@@ -168,6 +172,8 @@ if __name__ == "__main__":
             print(f"{"^"* len(k)} HALLUCINATION")
         if isinstance(v, str):
             print(v)
+        elif not v:
+            print("No good match found for this pull request.")
         else:
             for i in v:
                 print(f"{prefix}{i}")
