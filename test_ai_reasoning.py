@@ -1,4 +1,4 @@
-from ai_reason import map_prs_to_jira_rag
+from ai_reasoning import map_prs_to_jira_rag
 
 def test_full_program():
     pull_requests = [
