@@ -21,8 +21,11 @@ GENERATED_MDs=pr_best_practices.md jira_bot.md update_pr.md get_pull_requests.md
 docs: $(GENERATED_MDs) ## update all generated docs
 
 .PHONY: clean
-clean:  ## clean all generated files
+clean: clean_cache ## clean all generated files
 	rm -f $(GENERATED_MDs)
+
+.PHONY: clean-cache
+clean-cache:  ## clean only the caches
 	rm -f test_cache.pkl test_cache.sqlite ai_cache.pkl
 
 .PHONY: check-docs
