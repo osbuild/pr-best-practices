@@ -3,6 +3,8 @@ import json
 import numpy as np
 import os
 import sys
+if __name__ == "__main__":
+    print("Loading sentence transformers...")
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 from transformers import AutoTokenizer
@@ -11,13 +13,15 @@ from utils import Cache
 JIRA_HOST = os.getenv("JIRA_HOST", "https://issues.redhat.com")
 # MODEL ="granite3-dense:2b"
 # MODEL ="granite3.2:8b"
-# MODEL = "deepseek-r1:7b"
-MODEL = "deepseek-r1:14b"
+MODEL = "deepseek-r1:7b"
+# MODEL = "deepseek-r1:14b"
 # MODEL = "mistral:7b-instruct"
 AUTO_TOKENIZER_MODEL = "deepseek-ai/DeepSeek-R1"
 
 # Ollama API Endpoint
-OLLAMA_API_ENDPOINT = os.getenv("OLLAMA_API_ENDPOINT", "http://localhost:11434/api/generate")
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+OLLAMA_API_GENERATE = os.getenv("OLLAMA_API_ENDPOINT", f"{OLLAMA_HOST}/api/generate")
+OLLAMA_API_MODELS = os.getenv("OLLAMA_API_MODELS", f"{OLLAMA_HOST}/api/tags")
 DEBUG = True
 
 
@@ -62,9 +66,32 @@ The output format should look like this:
     "ai_description": "Your generated summary of the Jira issue" }}
 """
 
+PROMPT_NEW_DEV_SUMMARY ="""You are an expert in creating instructions for a software developer based on the title, summary and description of a Jira issue.
+The parent issues represent the context of the issue and are relevant for the implementation.
+You also take into account the parent issues to create good instructions with the context of the issue.
+
+You focus on making the description brief but enrich the description with aspects of all parents, not loosing any detail.
+Focus on aspects of the context that the parent issues describe, which are relevant for the implementation.
+Don't worry about the formatting, just focus on the content.
+
+The input data:
+{input}
+
+Return your answer solely as JSON object where you repeat exactly the 'key' of the jira_issue with an additional key 'ai_description' that
+contains your generated instructions. No formatting of your output is required.
+
+The output format should look like this:
+{{  "key": "{jira_key}",
+    "ai_description": "Your generated instructions for the Jira issue" }}
+"""
+
+if __name__ == "__main__":
+    print("Initializing Sentence Transformer…")
 # Initialize the embedding model (ensure you have the required package installed)
 embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 
+if __name__ == "__main__":
+    print("Loading cache…")
 if os.getenv("PR_BEST_PRACTICES_TEST_CACHE"):
     cache = Cache("ai_cache.pkl")
 else:
@@ -108,6 +135,40 @@ def retrieve_relevant_issues(pr_description, jira_index, top_k, threshold):
             })
     return relevant
 
+
+def cleanup_json_response(result):
+    """cleanup_json_response
+    * support for deepseek - filter out the <think>...</think> content
+    * sometimes the output is in a markdown code block, so filter that out too
+    * some AI answers include an introductory text, so we filter that out too
+    * if there are newlines - we'll remove them. They usually destroy the json syntax and are not relevant
+    * once we have a '{' we start reading, as soon as all braces are closed again we break, avoiding trailing text
+    """
+    real_result = ""
+    output = True
+    ignore_heading_text = True
+    braces = 0
+    for line in result.split("\n"):
+        if "<think>" in line:
+            output = False
+            continue
+        if "</think>" in line:
+            output = True
+            continue
+        if line in ["```", "```json"]:
+            continue
+        if '{' not in line and ignore_heading_text:
+            continue
+        braces += line.count('{')
+        braces -= line.count('}')
+        ignore_heading_text = False
+        if output:
+            real_result += line.replace("\n", " ").replace("\r", " ")
+        if braces <= 0:
+            break
+    return real_result
+
+
 def process_ai(task, prompt, model, auto_tokenizer_model):
     """
     For a given pull request and its retrieved Jira issues,
@@ -126,7 +187,7 @@ def process_ai(task, prompt, model, auto_tokenizer_model):
         "max_tokens": 200
     }
     try:
-        response = requests.post(OLLAMA_API_ENDPOINT, json=payload, stream=True)
+        response = requests.post(OLLAMA_API_GENERATE, json=payload, stream=True)
         result = ""
         for line in response.iter_lines():
             if not line:
@@ -136,37 +197,14 @@ def process_ai(task, prompt, model, auto_tokenizer_model):
             response = data.get("response", "")
             print(response, end="", flush=True)
             result += response
-        # support for deepseek - filter out the <think>...</think> content
-        # also sometimes the output is in a markdown code block, so filter that out too
-        real_result = ""
-        output = True
-        for line in result.split("\n"):
-            if "<think>" in line:
-                output = False
-                continue
-            if "</think>" in line:
-                output = True
-                continue
-            if line in ["```", "```json"]:
-                continue
-            if output:
-                real_result += line
 
+        real_result = cleanup_json_response(result)
         mapping = json.loads(real_result)
         print ("\n----")
         return mapping
     except Exception as e:
         print(f"\nError while {task}: {e}")
-        try:
-            print(line)
-        except:
-            try:
-                print(response.text)
-            except:
-                try:
-                    print(result)
-                except:
-                    pass
+
         print("----")
 
         return {"error": str(e)}
@@ -182,7 +220,12 @@ def generate_mapping_for_pr(pr, relevant_issues, model, auto_tokenizer_model):
     task = f"Thinking about {pr['url']}: \"{pr['title'].replace("\"", "'")}\"…"
     result = cache.cached_result(task, process_ai, task=task, prompt=prompt, model=model, auto_tokenizer_model=auto_tokenizer_model)
     try:
-        return result.get(pr['url'], "No good match found for this pull request.")
+        if pr['url'] in result.keys():
+            return result.get(pr['url'])
+        # workaround if AI does not return the correct key
+        if len(result.keys()) == 1:
+            return result.get(list(result.keys())[0])
+        return "No good match found for this pull request."
     except:
         return "No good match found for this pull request."
 
@@ -193,7 +236,7 @@ def create_ai_summary(jira_issues, related_issues, model, auto_tokenizer_model):
     jira_issues_revised = {}
     i = 1
     for jira_issue in jira_issues:
-        print(f"Creating AI Summary {i}/{len(jira_issues)}…")
+        print(f"Creating AI Summary {i}/{len(jira_issues)}: {jira_issue.get('key')}")
         i += 1
 
         ai_input = []
@@ -233,7 +276,7 @@ def create_ai_summary(jira_issues, related_issues, model, auto_tokenizer_model):
         }
         
         
-        prompt = PROMPT_NEW_SUMMARY.format(
+        prompt = PROMPT_NEW_DEV_SUMMARY.format(
             input=current_jira_issue['ai_input'],
             jira_key=current_jira_issue['key']
         )
@@ -249,7 +292,7 @@ def create_ai_summary(jira_issues, related_issues, model, auto_tokenizer_model):
         jira_issues_revised[jira_issue.get("key")] = current_jira_issue
     return jira_issues_revised
 
-def map_prs_to_jira_rag(prs, jira_issues, jira_issues_revised, model, auto_tokenizer_model, top_k, threshold):
+def map_prs_to_jira_rag(prs, jira_issues, jira_issues_revised, related_issues, model, auto_tokenizer_model, top_k, threshold):
     """
     For each pull request, retrieve the most similar Jira issues using embeddings,
     then generate a mapping via the LLM.
@@ -257,12 +300,36 @@ def map_prs_to_jira_rag(prs, jira_issues, jira_issues_revised, model, auto_token
     jira_index = build_jira_index(jira_issues, jira_issues_revised)
     final_mapping = {}
     for pr in prs:
+        # act as if referenced issues in the PR are part of the description for context
+        description = pr['description'].replace("\"", "'")
+        for k in related_issues.keys():
+            if pr['url'] in k:
+                description += related_issues[k]['summary'].replace("\"", "'")
+                description += related_issues[k]['description'].replace("\"", "'")
+        pr['description'] = description
         data = f"{pr['title']} {pr['description']}"
         relevant = retrieve_relevant_issues(data, jira_index, top_k=top_k, threshold=threshold)
         if not relevant:
             final_mapping[pr['url']] = "No good match found for this pull request."
         else:
             mapping = generate_mapping_for_pr(pr, relevant, model=model, auto_tokenizer_model=auto_tokenizer_model)
+            try:
+                new_mapping = {}
+                for key in mapping:
+                    for entry in relevant:
+                        if key == entry['key']:
+                            new_mapping[key] = {
+                                "key": key,
+                                "similarity": entry['similarity'],
+                            }
+                    if key not in new_mapping:
+                        new_mapping[key] = {
+                            "key": key,
+                            "similarity": None
+                        }
+                final_mapping[pr['url']] = new_mapping
+            except:
+                pass
             final_mapping[pr['url']] = mapping
     return final_mapping
 
@@ -271,14 +338,32 @@ if __name__ == "__main__":
     # Example pull requests and Jira issues
     #with open("data_collection.json") as f:
     #with open("data_collection_non_jira_large.json") as f:
+    print("loading data...")
     with open("data_collection_already_linked_cleaned.json") as f:
         data = json.load(f)
     pull_requests = data['pull_requests']
     jira_issues = data['jira_issues']
+    related_issues = data['related_issues']
 
-    jira_issues_revised = create_ai_summary(jira_issues, data['related_issues'], MODEL, AUTO_TOKENIZER_MODEL)
+    print(f"Getting available models from Ollama API on {OLLAMA_HOST}...")
+    response = requests.get(OLLAMA_API_MODELS, timeout=60)
 
-    mapping_result = map_prs_to_jira_rag(pull_requests, jira_issues, jira_issues_revised, model=MODEL, auto_tokenizer_model=AUTO_TOKENIZER_MODEL, top_k=5, threshold=0)
+    model_response = response.json()
+    models = [model["name"] for model in model_response.get("models", [])]
+
+    print("Available models:")
+    if len(models) == 0:
+        print("No models available on Ollama API.")
+    else:
+        print(f" * {'\n * '.join(models)}")
+    print()
+    if MODEL not in models:
+        print(f"Model {MODEL} not available on {OLLAMA_HOST}.")
+        sys.exit(1)
+
+    jira_issues_revised = create_ai_summary(jira_issues, related_issues, MODEL, AUTO_TOKENIZER_MODEL)
+
+    mapping_result = map_prs_to_jira_rag(pull_requests, jira_issues, jira_issues_revised, related_issues, model=MODEL, auto_tokenizer_model=AUTO_TOKENIZER_MODEL, top_k=5, threshold=0)
     print("Final Mapping Result:")
     # print(json.dumps(mapping_result, indent=2))
     prefix = " https://issues.redhat.com/browse/"

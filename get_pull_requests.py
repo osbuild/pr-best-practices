@@ -24,6 +24,8 @@ JIRA_TOKEN = os.getenv("JIRA_TOKEN")
 JIRA_TOPLEVEL_FILTER_ID = 12444600
 JIRA_CHILD_EPICS_JQL = "(issue in childIssuesOf(\"{jira_key}\") OR issue in childIssuesOf(\"COMPOSER-2246\")) AND type = Epic AND status != Closed"
 
+JIRA_RE_KEY = r"[A-Z]+\-\d+"
+
 # following two are redundant, just as a consistency check
 JIRA_PARENT_LINK_FIELD_NAME = "Parent Link"
 JIRA_PARENT_LINK_FIELD = "customfield_12313140"
@@ -176,13 +178,17 @@ def generate_jira_link(jira_key):
     return f"<{jira_url}|:jira-1992:{jira_key}>" if response.status_code == 200 else jira_key
 
 
+def find_all_jira_keys(text):
+    match = re.findall(rf"(?:\W|^)({JIRA_RE_KEY})(?:\W|$)", text)
+    return match
+
 def find_jira_key(pr_title, pr_html_url):
     """
     Look for a Jira key, when found generate a hyperlink and return the new pr_title_link
     """
     pr_title_link = f"<{pr_title}|{pr_html_url}>"
 
-    match = re.match(r"([A-Z]+\-\d+)([: -]+)(.+)", pr_title)
+    match = re.match(rf"({JIRA_RE_KEY})([: -]+)(.+)", pr_title)
     if match:
         jira_key, separator, title_remainder = match.groups()
         if jira_key:
@@ -294,6 +300,22 @@ def main():
         if parent and parent not in related_issues.keys():
             related_issues[parent] = cache.cached_result(f"jira_issue_{parent}", jira.issue, id=parent)
 
+    # skip though the PR title and description
+    # and add the content of referenced jira issues
+    for item in pull_request_list:
+        pr_key = item['html_url']
+        ref_nr = 0
+
+        jira_keys = find_all_jira_keys(item['title'])
+        for k in jira_keys:
+            related_issues[f"{pr_key}_{ref_nr}"] = cache.cached_result(f"jira_issue_title_{pr_key}_{ref_nr}", jira.issue, id=k)
+            ref_nr += 1
+
+        jira_keys = find_all_jira_keys(item['description'])
+        for k in jira_keys:
+            related_issues[f"{pr_key}_{ref_nr}"] = cache.cached_result(f"jira_issue_description_{pr_key}_{ref_nr}", jira.issue, id=k)
+            ref_nr += 1
+
     # get all the parents for more context
     print("Fetching related issues…")
     get_more = True
@@ -358,6 +380,8 @@ def main():
         f.write(json.dumps(data_collection_jira))
 
     print(f"Stats:")
+    print(f"PRs with jira key: {len(with_jira)}")
+    print(f"PRs without jira key: {len(without_jira)}")
     print(f"Open Epics: {len(unique_sorted_epics)}")
     print(f"Related Issues: {len(related_issues)}")
 
