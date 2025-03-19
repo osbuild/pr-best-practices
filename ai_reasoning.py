@@ -45,7 +45,7 @@ Return your answer as a JSON object with the pull request URL as key and its val
 - never return both "No good match found for this pull request." and a list of Jira issue KEYs.
 
 The output format should look like this:
-{{ "{{pr['url']}}": ["JIRA-123", "JIRA-456"] }}
+{{ "{pr_url}": ["JIRA-123", "JIRA-456"] }}
 """
 
 PROMPT_NEW_SUMMARY ="""You are an expert at creating a summary for a Jira issue based on its title, summary and description
@@ -53,17 +53,11 @@ as well as all its parents.
 
 You focus on making the description brief but enrich the description with aspects of all parents, not loosing any detail.
 Focus on aspects of the context that the parent issues describe, which are relevant for a technical implementation.
-Don't worry about the formatting, just focus on the content.
 
 The input data:
 {input}
 
-Return your answer solely as JSON object where you repeat exactly the 'key' of the jira_issue with an additional key 'ai_description' that
-contains your generated summary.
-
-The output format should look like this:
-{{  "key": "{jira_key}",
-    "ai_description": "Your generated summary of the Jira issue" }}
+Dont use formatting, just focus on the content.
 """
 
 PROMPT_NEW_DEV_SUMMARY ="""You are an expert in creating instructions for a software developer based on the title, summary and description of a Jira issue.
@@ -72,17 +66,11 @@ You also take into account the parent issues to create good instructions with th
 
 You focus on making the description brief but enrich the description with aspects of all parents, not loosing any detail.
 Focus on aspects of the context that the parent issues describe, which are relevant for the implementation.
-Don't worry about the formatting, just focus on the content.
 
 The input data:
 {input}
 
-Return your answer solely as JSON object where you repeat exactly the 'key' of the jira_issue with an additional key 'ai_description' that
-contains your generated instructions. No formatting of your output is required.
-
-The output format should look like this:
-{{  "key": "{jira_key}",
-    "ai_description": "Your generated instructions for the Jira issue" }}
+Dont use formatting, just focus on the content.
 """
 
 if __name__ == "__main__":
@@ -169,7 +157,7 @@ def cleanup_json_response(result):
     return real_result
 
 
-def process_ai(task, prompt, model, auto_tokenizer_model):
+def process_ai(task, prompt, model, auto_tokenizer_model, expect_json=True):
     """
     For a given pull request and its retrieved Jira issues,
     generate a mapping using the LLM.
@@ -198,10 +186,15 @@ def process_ai(task, prompt, model, auto_tokenizer_model):
             print(response, end="", flush=True)
             result += response
 
-        real_result = cleanup_json_response(result)
-        mapping = json.loads(real_result)
         print ("\n----")
-        return mapping
+
+        if expect_json:
+            real_result = cleanup_json_response(result)
+            ret = json.loads(real_result)
+        else:
+            ret = result
+
+        return ret
     except Exception as e:
         print(f"\nError while {task}: {e}")
 
@@ -284,9 +277,9 @@ def create_ai_summary(jira_issues, related_issues, model, auto_tokenizer_model):
         print(f"Taking parents in to account: {" ".join(parent_keys)}")
 
         task = f"Thinking about {JIRA_HOST}/browse/{current_jira_issue['key']}: \"{current_jira_issue['summary']}\"…"
-        result = cache.cached_result(task, process_ai, task=task, prompt=prompt, model=model, auto_tokenizer_model=auto_tokenizer_model)
+        result = cache.cached_result(task, process_ai, task=task, prompt=prompt, model=model, auto_tokenizer_model=auto_tokenizer_model, expect_json=False)
         try:
-            current_jira_issue['ai_description'] = result.get('ai_description', "")
+            current_jira_issue['ai_description'] = result
         except:
             current_jira_issue['ai_description'] = ""
         jira_issues_revised[jira_issue.get("key")] = current_jira_issue
@@ -339,7 +332,7 @@ if __name__ == "__main__":
     #with open("data_collection.json") as f:
     #with open("data_collection_non_jira_large.json") as f:
     print("loading data...")
-    with open("data_collection_already_linked_cleaned.json") as f:
+    with open("data_collection.json") as f:
         data = json.load(f)
     pull_requests = data['pull_requests']
     jira_issues = data['jira_issues']
