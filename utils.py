@@ -1,6 +1,7 @@
 import pickle
 import os
 import re
+import threading
 
 from typing import Any
 from collections.abc import Mapping, Callable
@@ -31,6 +32,11 @@ class Cache:
         self.cache = {}
         self.cache_on = cache_file is not None
 
+        # two locks to avoid race conditions when accessing the cache
+        # but also being able to run independent operations in parallel
+        self._cache_lock = threading.Lock()
+        self._cache_per_key_lock = {}
+
         if self.cache_on:
             self._cache_load(cache_file)
 
@@ -55,16 +61,35 @@ class Cache:
         """
         Cache the result of a function call.
         Only to be used for local testing!
+
+        This function is thread safe having `function()` run in parallel but only for
+        distinct `cache_key` values.
         """
+        cache_key_lock = None
         if self.cache_on:
-            result = self.cache.get(cache_key)
+            with self._cache_lock:
+                cache_key_lock = self._cache_per_key_lock.get(cache_key)
+                if not cache_key_lock:
+                    cache_key_lock = threading.Lock()
+                    self._cache_per_key_lock[cache_key] = cache_key_lock
+            cache_key_lock.acquire()
+            with self._cache_lock:
+                result = self.cache.get(cache_key)
         else:
             result = None
-        if result is None:
-            result = function(**kwargs)
-            if self.cache_on:
-                self.cache[cache_key] = result
-                # better save now, so it's not lost if the script crashes
-                self._cache_save()
+        # catch all exceptions as we need to release the lock
+        try:
+            if result is None:
+                result = function(**kwargs)
+                if self.cache_on:
+                    with self._cache_lock:
+                        self.cache[cache_key] = result
+                        # better save now, so it's not lost if the script crashes
+                        self._cache_save()
+        except:
+            raise
+        finally:
+            if cache_key_lock:
+                cache_key_lock.release()
 
         return result
