@@ -7,7 +7,7 @@ from collections.abc import Mapping, Callable
 
 def format_help_as_md(parser):
     help_text = parser.format_help()
-    section = re.compile("^(\w+):$")
+    section = re.compile(r"^(\w+):$")
     ret = []
     in_block = False
     for line in help_text.split("\n"):
