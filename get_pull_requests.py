@@ -2,6 +2,8 @@
 
 """
 Small script to return all pull requests for a given organisation, repository and assignee
+
+Saves a `data_collection.json` to be used with `ai_reasoning.py` for further analysis.
 """
 
 import argparse
@@ -21,7 +23,11 @@ from utils import format_help_as_md, Cache
 
 JIRA_HOST = os.getenv("JIRA_HOST", "https://issues.redhat.com")
 JIRA_TOKEN = os.getenv("JIRA_TOKEN")
-JIRA_TOPLEVEL_FILTER_ID = 12444600
+# current quarter only
+# JIRA_TOPLEVEL_FILTER_ID = 12444600
+# whole portfolio plan
+JIRA_TOPLEVEL_FILTER_ID = 12429182
+
 JIRA_CHILD_EPICS_JQL = "(issue in childIssuesOf(\"{jira_key}\") OR issue in childIssuesOf(\"COMPOSER-2246\")) AND type = Epic AND status != Closed"
 
 JIRA_RE_KEY = r"[A-Z]+\-\d+"
@@ -235,7 +241,7 @@ def main():
     print(f"Fetching pull requests for {args.org}/{args.repo} assigned to {args.author}")
 
     pull_request_list = cache.cached_result(
-        "get_pull_request_list",
+        f"get_pull_request_list_{args.org}_{args.repo}_{args.author}",
         get_pull_request_list,
         github_api=github_api,
         org=args.org,
@@ -247,30 +253,10 @@ def main():
     with_jira = [item for item in pull_request_list if jira_pattern.search(item['title'])]
     without_jira = [item for item in pull_request_list if not jira_pattern.search(item['title'])]
 
-    print(f"# Pull requests with Jira keys: {len(with_jira)}")
-    for pull_request in with_jira:
-        pr_title_link = find_jira_key(pull_request['title'], pull_request['html_url'])
-        entry = (
-            f"*{pull_request['repo']}*: {pr_title_link}"
-            f" (+{pull_request['additions']}/-{pull_request['deletions']})"
-        )
-        print(entry)
-    
-    print()
-    print(f"# Pull requests without Jira keys: {len(without_jira)}")
-    for pull_request in without_jira:
-        pr_title_link = find_jira_key(pull_request['title'], pull_request['html_url'])
-        entry = (
-            f"*{pull_request['repo']}*: {pr_title_link}"
-            f" (+{pull_request['additions']}/-{pull_request['deletions']})"
-        )
-        print(entry)
-        # use "description" for an AI to find a match to an epic?
-        # print(f"  {pull_request.get('description', '-- No description --')}")
-
+    print("Fetching Jira issues")
     jira = JIRA(JIRA_HOST, token_auth=JIRA_TOKEN)
     jql = f'filter = {JIRA_TOPLEVEL_FILTER_ID}'
-    issues = cache.cached_result("jira_search_issues", jira.search_issues, jql_str=jql)
+    issues = cache.cached_result("jira_search_issues_{jql}", jira.search_issues, jql_str=jql)
 
     fields = cache.cached_result("jira_fields", jira.fields)
     fieldmap = {f['id']: f['name'] for f in fields}
@@ -295,7 +281,7 @@ def main():
     for i in unique_sorted_epics:
         print(f"  {i.key}: {i.fields.summary}")
         print(f"  {' ' * len(i.key)}  https://issues.redhat.com/browse/{i.key}")
-        print(f"            {fieldmap['customfield_12313140']}: {i.fields.customfield_12313140}")
+        print(f"  {' ' * len(i.key)}  {fieldmap['customfield_12313140']}: {i.fields.customfield_12313140}")
         parent = getattr(i.fields, JIRA_PARENT_LINK_FIELD, None)
         if parent and parent not in related_issues.keys():
             related_issues[parent] = cache.cached_result(f"jira_issue_{parent}", jira.issue, id=parent)
@@ -378,6 +364,25 @@ def main():
         f.write(json.dumps(data_collection))
     with open("data_collection_already_linked.json", "w") as f:
         f.write(json.dumps(data_collection_jira))
+
+    print(f"# Pull requests with Jira keys: {len(with_jira)}")
+    for pull_request in with_jira:
+        pr_title_link = find_jira_key(pull_request['title'], pull_request['html_url'])
+        entry = (
+            f"*{pull_request['repo']}*: {pr_title_link}"
+            f" (+{pull_request['additions']}/-{pull_request['deletions']})"
+        )
+        print(entry)
+    
+    print()
+    print(f"# Pull requests without Jira keys: {len(without_jira)}")
+    for pull_request in without_jira:
+        pr_title_link = find_jira_key(pull_request['title'], pull_request['html_url'])
+        entry = (
+            f"*{pull_request['repo']}*: {pr_title_link}"
+            f" (+{pull_request['additions']}/-{pull_request['deletions']})"
+        )
+        print(entry)
 
     print(f"Stats:")
     print(f"PRs with jira key: {len(with_jira)}")

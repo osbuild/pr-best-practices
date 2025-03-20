@@ -1,12 +1,13 @@
 # Usage
 ```
-       get_pull_requests.py [-h] [--github-token GITHUB_TOKEN]
-                            [--jira-host JIRA_HOST] [--jira-token JIRA_TOKEN]
+       get_pull_requests.py [-h] --github-token GITHUB_TOKEN
+                            [--jira-host JIRA_HOST] --jira-token JIRA_TOKEN
                             --org ORG [--repo REPO] [--author AUTHOR]
                             [--dry-run | --no-dry-run] [--help-md]
 ```
 Small script to return all pull requests for a given organisation, repository
-and assignee
+and assignee Saves a `data_collection.json` to be used with `ai_reasoning.py`
+for further analysis.
 
 # Options
 ```

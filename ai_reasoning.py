@@ -1,21 +1,30 @@
+#!/usr/bin/python3
+
+"""
+This script uses AI to summarize the Epics (with the context of their issue-parents)
+then uses sentence transformers (RAG) to find the most similar issues to the list of PRs.
+Finally uses AI to figure out which of the issues match the PR the most.
+
+It expects `get_pull_requests.py` to be run before and generate `data_collection.json`.
+"""
+
+import argparse
 import requests
 import json
 import numpy as np
 import os
 import sys
-if __name__ == "__main__":
-    print("Loading sentence transformers...")
-from sentence_transformers import SentenceTransformer
-from sklearn.metrics.pairwise import cosine_similarity
-from transformers import AutoTokenizer
-from utils import Cache
+from utils import Cache, format_help_as_md
 
 JIRA_HOST = os.getenv("JIRA_HOST", "https://issues.redhat.com")
-# MODEL ="granite3-dense:2b"
-# MODEL ="granite3.2:8b"
-MODEL = "deepseek-r1:7b"
-# MODEL = "deepseek-r1:14b"
-# MODEL = "mistral:7b-instruct"
+# OLLAMA_MODEL ="granite3-dense:2b"
+# OLLAMA_MODEL ="granite3.2:8b"
+# OLLAMA_MODEL = "deepseek-r1:14b"
+# OLLAMA_MODEL = "mistral:7b-instruct"
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "deepseek-r1:7b")
+
+# auto tokenizer should match the `OLLAMA_MODEL` but
+# only needed for "debugging"
 AUTO_TOKENIZER_MODEL = "deepseek-ai/DeepSeek-R1"
 
 # Ollama API Endpoint
@@ -24,6 +33,7 @@ OLLAMA_API_GENERATE = os.getenv("OLLAMA_API_ENDPOINT", f"{OLLAMA_HOST}/api/gener
 OLLAMA_API_MODELS = os.getenv("OLLAMA_API_MODELS", f"{OLLAMA_HOST}/api/tags")
 DEBUG = True
 
+SCENTENCE_TRANSFORMER_MODEL = "all-MiniLM-L6-v2"
 
 PROMPT_MAP_PR ="""You are an expert at mapping a GitHub pull request to Jira issues based on their descriptions, title and summary.
 
@@ -73,17 +83,9 @@ The input data:
 Dont use formatting, just focus on the content.
 """
 
-if __name__ == "__main__":
-    print("Initializing Sentence Transformer…")
-# Initialize the embedding model (ensure you have the required package installed)
-embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-
-if __name__ == "__main__":
-    print("Loading cache…")
-if os.getenv("PR_BEST_PRACTICES_TEST_CACHE"):
-    cache = Cache("ai_cache.pkl")
-else:
-    cache = Cache(None) # indicates not to use cache
+def debug_print(*args, **kwargs):
+    if DEBUG:
+        print(*args, **kwargs)
 
 def compute_embeddings(text_list):
     """Compute embeddings for a list of texts."""
@@ -167,7 +169,7 @@ def process_ai(task, prompt, model, auto_tokenizer_model, expect_json=True):
     tokens = tokenizer.encode(prompt)
     # hint: e.g. deepseek can do ~ 2000 tokens - we could iterate and give more issues 
     # until we are just below 2000 tokens. Could be an extention for the future…
-    print(f"Current prompt: {len(prompt.split())} words = {len(tokens)} tokens")
+    debug_print(f"Current prompt: {len(prompt.split())} words = {len(tokens)} tokens")
     payload = {
         "model": model,
         "prompt": prompt,
@@ -183,10 +185,10 @@ def process_ai(task, prompt, model, auto_tokenizer_model, expect_json=True):
             decoded_line = line.decode('utf-8')
             data = json.loads(decoded_line)
             response = data.get("response", "")
-            print(response, end="", flush=True)
+            debug_print(response, end="", flush=True)
             result += response
 
-        print ("\n----")
+        debug_print("\n----")
 
         if expect_json:
             real_result = cleanup_json_response(result)
@@ -328,11 +330,53 @@ def map_prs_to_jira_rag(prs, jira_issues, jira_issues_revised, related_issues, m
 
 if __name__ == "__main__":
 
+    parser = argparse.ArgumentParser(allow_abbrev=False,
+        description=__doc__,
+        epilog="""If you have ollama running on another host (with a decent GPU), you might want to set
+        the environment variable `OLLAMA_HOST` to something like `http://other_host:11434`.
+        Also, you might want to set the environment variable `OLLAMA_MODEL` to something you have
+        downloaded in ollama.
+        """,
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+    # also show the default in the help
+    parser.add_argument("--input", help="Input JSON file containing pull requests and Jira issues", default="data_collection.json")
+    parser.add_argument("--rag_top_k", help="Number of top similar Jira issues to return for each PR", default=5, type=int)
+    parser.add_argument("--rag_threshold", help="Threshold for similarity score to consider a Jira issue as similar to the given PR (range 0.0-1.0)", default=0.2, type=float)
+    parser.add_argument("--help-md", help="Show help as Markdown", action="store_true")
+
+    # workaround that required attribute are not given for --help-md
+    if "--help-md" in sys.argv:
+        print(format_help_as_md(parser))
+        sys.exit(0)
+
+    args = parser.parse_args()
+
+    # doing import LATE here, because it would take too long just for the "help"
+    print("Loading sentence transformers...")
+    from sentence_transformers import SentenceTransformer
+    from sklearn.metrics.pairwise import cosine_similarity
+    from transformers import AutoTokenizer
+
+    print("Initializing Sentence Transformer…")
+    # Initialize the embedding model (ensure you have the required package installed)
+    embedding_model = SentenceTransformer(SCENTENCE_TRANSFORMER_MODEL)
+
+    if __name__ == "__main__":
+        print("Loading cache…")
+    if os.getenv("PR_BEST_PRACTICES_TEST_CACHE"):
+        cache = Cache("ai_cache.pkl")
+    else:
+        cache = Cache(None) # indicates not to use cache
+
+
+    json_input_file = args.input
+    
     # Example pull requests and Jira issues
     #with open("data_collection.json") as f:
     #with open("data_collection_non_jira_large.json") as f:
     print("loading data...")
-    with open("data_collection.json") as f:
+    with open(json_input_file, "r") as f:
         data = json.load(f)
     pull_requests = data['pull_requests']
     jira_issues = data['jira_issues']
@@ -350,16 +394,16 @@ if __name__ == "__main__":
     else:
         print(f" * {'\n * '.join(models)}")
     print()
-    if MODEL not in models:
-        print(f"Model {MODEL} not available on {OLLAMA_HOST}.")
+    if OLLAMA_MODEL not in models:
+        print(f"Model {OLLAMA_MODEL} not available on {OLLAMA_HOST}.")
         sys.exit(1)
 
-    jira_issues_revised = create_ai_summary(jira_issues, related_issues, MODEL, AUTO_TOKENIZER_MODEL)
+    jira_issues_revised = create_ai_summary(jira_issues, related_issues, OLLAMA_MODEL, AUTO_TOKENIZER_MODEL)
 
-    mapping_result = map_prs_to_jira_rag(pull_requests, jira_issues, jira_issues_revised, related_issues, model=MODEL, auto_tokenizer_model=AUTO_TOKENIZER_MODEL, top_k=5, threshold=0)
+    mapping_result = map_prs_to_jira_rag(pull_requests, jira_issues, jira_issues_revised, related_issues, model=OLLAMA_MODEL, auto_tokenizer_model=AUTO_TOKENIZER_MODEL, top_k=args.rag_top_k, threshold=args.rag_threshold)
     print("Final Mapping Result:")
     # print(json.dumps(mapping_result, indent=2))
-    prefix = " https://issues.redhat.com/browse/"
+    prefix = f"{JIRA_HOST}/browse/"
 
     for k, v in mapping_result.items():
         print(f"\n{k}:")
@@ -371,7 +415,7 @@ if __name__ == "__main__":
             print("No good match found for this pull request.")
         else:
             for i in v:
-                print(f"{prefix}{i}")
+                print(f" {prefix}{i}")
                 if i not in [j['key'] for j in jira_issues]:
-                    print(f"{" " * len(prefix)}{"^"* len(i)} HALLUCINATION")
+                    print(f" {" " * len(prefix)}{"^"* len(i)} HALLUCINATION")
 
