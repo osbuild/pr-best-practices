@@ -302,7 +302,7 @@ def map_prs_to_jira_rag(prs, jira_issues, jira_issues_revised, related_issues, m
                 description += related_issues[k]['summary'].replace("\"", "'")
                 description += related_issues[k]['description'].replace("\"", "'")
         pr['description'] = description
-        data = f"{pr['title']} {pr['description']}"
+        data = f"{pr['url']} {pr['title']} {pr['description']}"
         relevant = retrieve_relevant_issues(data, jira_index, top_k=top_k, threshold=threshold)
         if not relevant:
             final_mapping[pr['url']] = "No good match found for this pull request."
