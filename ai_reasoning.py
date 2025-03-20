@@ -35,6 +35,8 @@ DEBUG = True
 
 SCENTENCE_TRANSFORMER_MODEL = "all-MiniLM-L6-v2"
 
+FALLBACK_ISSUES = ["COMPOSER-2246"]
+
 PROMPT_MAP_PR ="""You are an expert at mapping a GitHub pull request to Jira issues based on their descriptions, title and summary.
 
 Pull Request:
@@ -46,7 +48,9 @@ Retrieved Jira Issues:
 {relevant_issues}
 
 If the pull request description clearly relates to any of these Jira issues, list the matching Jira issue KEYs.
-If not, output "No good match found for this pull request."
+You should prefer the "Retrieved Jira Issues"
+If the pull request is somehow related you can also suggest from those:
+{fallback_issues}
 
 Return your answer as a JSON object with the pull request URL as key and its value as either:
 - a list of matching Jira issue KEYs, or
@@ -205,13 +209,15 @@ def process_ai(task, prompt, model, auto_tokenizer_model, expect_json=True):
         return {"error": str(e)}
 
 
-def generate_mapping_for_pr(pr, relevant_issues, model, auto_tokenizer_model):
+def generate_mapping_for_pr(pr, relevant_issues, fallback_issues, model, auto_tokenizer_model):
     prompt = PROMPT_MAP_PR.format(
         pr_url=pr['url'].replace("\"", "'"),
         pr_title=pr['title'].replace("\"", "'"),
         pr_description=pr['description'].replace("\"", "'"),
-        relevant_issues=json.dumps(relevant_issues, indent=2)
+        relevant_issues=json.dumps(relevant_issues, indent=2),
+        fallback_issues=json.dumps(fallback_issues, indent=2)
     )
+
     task = f"Thinking about {pr['url']}: \"{pr['title'].replace("\"", "'")}\"…"
     result = cache.cached_result(task, process_ai, task=task, prompt=prompt, model=model, auto_tokenizer_model=auto_tokenizer_model)
     try:
@@ -304,10 +310,22 @@ def map_prs_to_jira_rag(prs, jira_issues, jira_issues_revised, related_issues, m
         pr['description'] = description
         data = f"{pr['url']} {pr['title']} {pr['description']}"
         relevant = retrieve_relevant_issues(data, jira_index, top_k=top_k, threshold=threshold)
+
+        # patch in defaults
+        defaults = FALLBACK_ISSUES
+        fallback_issues = []
+        for default_issue in defaults:
+            fallback_issues.append({
+                'key': related_issues[default_issue]['key'],
+                'summary': related_issues[default_issue]['summary'],
+                'description': related_issues[default_issue]['description'],
+                'similarity': float(1)
+            })
+
         if not relevant:
             final_mapping[pr['url']] = "No good match found for this pull request."
         else:
-            mapping = generate_mapping_for_pr(pr, relevant, model=model, auto_tokenizer_model=auto_tokenizer_model)
+            mapping = generate_mapping_for_pr(pr, relevant, fallback_issues, model=model, auto_tokenizer_model=auto_tokenizer_model)
             try:
                 new_mapping = {}
                 for key in mapping:
@@ -416,6 +434,6 @@ if __name__ == "__main__":
         else:
             for i in v:
                 print(f" {prefix}{i}")
-                if i not in [j['key'] for j in jira_issues]:
+                if i not in [j['key'] for j in jira_issues] and i not in related_issues.keys():
                     print(f" {" " * len(prefix)}{"^"* len(i)} HALLUCINATION")
 
