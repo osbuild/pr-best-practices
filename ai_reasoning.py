@@ -35,8 +35,6 @@ DEBUG = True
 
 SCENTENCE_TRANSFORMER_MODEL = "all-MiniLM-L6-v2"
 
-FALLBACK_ISSUES = ["COMPOSER-2246"]
-
 PROMPT_MAP_PR ="""You are an expert at mapping a GitHub pull request to Jira issues based on their descriptions, title and summary.
 
 Pull Request:
@@ -312,20 +310,19 @@ def map_prs_to_jira_rag(prs, jira_issues, jira_issues_revised, related_issues, m
         relevant = retrieve_relevant_issues(data, jira_index, top_k=top_k, threshold=threshold)
 
         # patch in defaults
-        defaults = FALLBACK_ISSUES
-        fallback_issues = []
-        for default_issue in defaults:
-            fallback_issues.append({
-                'key': related_issues[default_issue]['key'],
-                'summary': related_issues[default_issue]['summary'],
-                'description': related_issues[default_issue]['description'],
+        fallback_issue_data = []
+        for fallback_issue in fallback_issues:
+            fallback_issue_data.append({
+                'key': related_issues[fallback_issue]['key'],
+                'summary': related_issues[fallback_issue]['summary'],
+                'description': related_issues[fallback_issue]['description'],
                 'similarity': float(1)
             })
 
         if not relevant:
             final_mapping[pr['url']] = "No good match found for this pull request."
         else:
-            mapping = generate_mapping_for_pr(pr, relevant, fallback_issues, model=model, auto_tokenizer_model=auto_tokenizer_model)
+            mapping = generate_mapping_for_pr(pr, relevant, fallback_issue_data, model=model, auto_tokenizer_model=auto_tokenizer_model)
             try:
                 new_mapping = {}
                 for key in mapping:
@@ -399,6 +396,7 @@ if __name__ == "__main__":
     pull_requests = data['pull_requests']
     jira_issues = data['jira_issues']
     related_issues = data['related_issues']
+    fallback_issues = data['fallback_issues']
 
     print(f"Getting available models from Ollama API on {OLLAMA_HOST}...")
     response = requests.get(OLLAMA_API_MODELS, timeout=60)
@@ -418,7 +416,7 @@ if __name__ == "__main__":
 
     jira_issues_revised = create_ai_summary(jira_issues, related_issues, OLLAMA_MODEL, AUTO_TOKENIZER_MODEL)
 
-    mapping_result = map_prs_to_jira_rag(pull_requests, jira_issues, jira_issues_revised, related_issues, model=OLLAMA_MODEL, auto_tokenizer_model=AUTO_TOKENIZER_MODEL, top_k=args.rag_top_k, threshold=args.rag_threshold)
+    mapping_result = map_prs_to_jira_rag(pull_requests, jira_issues, jira_issues_revised, related_issues, fallback_issues, model=OLLAMA_MODEL, auto_tokenizer_model=AUTO_TOKENIZER_MODEL, top_k=args.rag_top_k, threshold=args.rag_threshold)
     print("Final Mapping Result:")
     # print(json.dumps(mapping_result, indent=2))
     prefix = f"{JIRA_HOST}/browse/"

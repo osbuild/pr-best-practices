@@ -28,7 +28,15 @@ JIRA_TOKEN = os.getenv("JIRA_TOKEN")
 # whole portfolio plan
 JIRA_TOPLEVEL_FILTER_ID = 12429182
 
-JIRA_CHILD_EPICS_JQL = "(issue in childIssuesOf(\"{jira_key}\") OR issue in childIssuesOf(\"COMPOSER-2246\")) AND type = Epic AND status != Closed"
+# suggest those in case the other's don't really match
+FALLBACK_ISSUES = os.getenv("FALLBACK_ISSUES", "COMPOSER-2246").split(',')
+
+_child_issues_of_snippet = "\"), childIssuesOf(\"".join(FALLBACK_ISSUES)
+
+_CHILD_ISSUE_JQL = "" if len(FALLBACK_ISSUES) == 0 else f"OR issue in (childIssuesOf(\"{_child_issues_of_snippet}\"))"
+
+# double curly braces for the `.format()` later!
+JIRA_CHILD_EPICS_JQL = f"issue in childIssuesOf(\"{{jira_key}}\") {_CHILD_ISSUE_JQL} AND type = Epic AND status != Closed"
 
 JIRA_RE_KEY = r"[A-Z]+\-\d+"
 
@@ -179,7 +187,7 @@ def generate_jira_link(jira_key):
     """
     Generate a Jira link and verify that it exists
     """
-    jira_url = f"https://issues.redhat.com/browse/{jira_key}"
+    jira_url = f"{JIRA_HOST}/browse/{jira_key}"
     response = requests.head(jira_url, timeout=3)
     return f"<{jira_url}|:jira-1992:{jira_key}>" if response.status_code == 200 else jira_key
 
@@ -269,18 +277,13 @@ def main():
     for i in issues:
         print(f"Fetching children of {i.key}…")
         child_issues[i.key] = cache.cached_result(f"jira_epic_children_{i.key}", jira.search_issues, jql_str=JIRA_CHILD_EPICS_JQL.format(jira_key=i.key))
-        #for field_name in i.raw['fields']:
-        #    v = i.raw['fields'][field_name]
-        #    k = fieldmap.get(field_name, field_name)
-        #    if v is not None and v != "None" and v != "":
-        #        print(f"Field {k:>20}: {v}")
     # print unique, sorted epics
     unique_sorted_epics = sorted(set([e for res in child_issues.values() for e in res]), key=lambda x: x.key)
     related_issues = {}
     print(f"All open Epics: {len(unique_sorted_epics)}")
     for i in unique_sorted_epics:
         print(f"  {i.key}: {i.fields.summary}")
-        print(f"  {' ' * len(i.key)}  https://issues.redhat.com/browse/{i.key}")
+        print(f"  {' ' * len(i.key)}  {JIRA_HOST}/browse/{i.key}")
         print(f"  {' ' * len(i.key)}  {fieldmap['customfield_12313140']}: {i.fields.customfield_12313140}")
         parent = getattr(i.fields, JIRA_PARENT_LINK_FIELD, None)
         if parent and parent not in related_issues.keys():
@@ -333,7 +336,8 @@ def main():
                  'description': v.fields.description,
                  'parent': getattr(v.fields, JIRA_PARENT_LINK_FIELD, None)
             } for k, v in related_issues.items()
-        }
+        },
+        "fallback_issues": FALLBACK_ISSUES
     }
 
     # for reference/testing - data with already linked PRs
@@ -357,7 +361,8 @@ def main():
                  'description': v.fields.description,
                  'parent': getattr(v.fields, JIRA_PARENT_LINK_FIELD, None)
             } for k, v in related_issues.items()
-        }
+        },
+        "fallback_issues": FALLBACK_ISSUES
     }
 
     with open("data_collection.json", "w") as f:
