@@ -27,5 +27,6 @@ for further analysis.
 ```
 You can set the `GITHUB_TOKEN` environment variable instead of using the
 `--github-token` argument. You can also set the `PR_BEST_PRACTICES_TEST_CACHE`
-environment variable to anything (e.g. `1`) use the cache.
+environment variable to anything (e.g. `1`) use the cache. The retrieval of
+issues starts with `JIRA_TOPLEVEL_FILTER_ID`.
 

@@ -21,8 +21,14 @@ from fastcore.foundation import L
 
 from utils import format_help_as_md, Cache
 
+doc_epilog = """You can set the `GITHUB_TOKEN` environment variable instead of using the `--github-token` argument.
+You can also set the `PR_BEST_PRACTICES_TEST_CACHE` environment variable to anything (e.g. `1`) use the cache.
+"""
+
 JIRA_HOST = os.getenv("JIRA_HOST", "https://issues.redhat.com")
 JIRA_TOKEN = os.getenv("JIRA_TOKEN")
+
+doc_epilog += "The retrieval of issues starts with `JIRA_TOPLEVEL_FILTER_ID`."
 # current quarter only
 # JIRA_TOPLEVEL_FILTER_ID = 12444600
 # whole portfolio plan
@@ -214,9 +220,7 @@ def main():
     """Return a list of pull requests for a given organisation, repository and assignee"""
     parser = argparse.ArgumentParser(allow_abbrev=False,
         description=__doc__,
-        epilog="""You can set the `GITHUB_TOKEN` environment variable instead of using the `--github-token` argument.
-        You can also set the `PR_BEST_PRACTICES_TEST_CACHE` environment variable to anything (e.g. `1`) use the cache.
-        """
+        epilog=doc_epilog
     )
 
     # GhApi() supports pulling the token out of the env - so if it's
@@ -296,6 +300,8 @@ def main():
 
     # skip though the PR title and description
     # and add the content of referenced jira issues
+    # NOTE: related_issues now also contain keys with the PR-url
+    # which are issues mentioned in the PR
     for item in pull_request_list:
         pr_key = item['html_url']
         ref_nr = 0
