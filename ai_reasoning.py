@@ -47,6 +47,7 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "deepseek-r1:7b")
 
 doc_epilog += "The environment variable `AI_REASONING_DEBUG` can be used to enable debug/verbose output.  \n"
 DEBUG = bool(os.getenv("AI_REASONING_DEBUG", False))
+LOG_FILE=""
 
 SCENTENCE_TRANSFORMER_MODEL = "all-MiniLM-L6-v2"
 doc_epilog += f"The transformer model for RAG is hardcoded in the script to `{SCENTENCE_TRANSFORMER_MODEL}`"
@@ -104,6 +105,10 @@ Dont use formatting, just focus on the content.
 def debug_print(*args, **kwargs):
     if DEBUG:
         print(*args, **kwargs)
+    if LOG_FILE:
+        with open(LOG_FILE, "a") as f:
+            f.write(*args)
+            f.write(str(kwargs.get('end', '\n')))
 
 def compute_embeddings(text_list, embedding_model):
     """Compute embeddings for a list of texts."""
@@ -363,7 +368,9 @@ def map_prs_to_jira_rag(prs, jira_issues, jira_issues_revised, related_issues, f
 def get_suggestions(json_input_file, rag_top_k, rag_threshold):
     # doing import LATE here, because it would take too long just for the "help"
     print("Loading sentence transformers...")
+    global SentenceTransformer
     from sentence_transformers import SentenceTransformer
+    global AutoTokenizer
     from transformers import AutoTokenizer
 
     print("Initializing Sentence Transformer…")
@@ -444,6 +451,7 @@ if __name__ == "__main__":
     parser.add_argument("--input", help="Input JSON file containing pull requests and Jira issues", default="data_collection.json")
     parser.add_argument("--rag_top_k", help="Number of top similar Jira issues to return for each PR", default=5, type=int)
     parser.add_argument("--rag_threshold", help="Threshold for similarity score to consider a Jira issue as similar to the given PR (range 0.0-1.0)", default=0.2, type=float)
+    parser.add_argument("--log", help="Create a logfile with debug messages", default="", type=str)
     parser.add_argument("--help-md", help="Show help as Markdown", action="store_true")
 
     # workaround that required attribute are not given for --help-md
@@ -452,6 +460,8 @@ if __name__ == "__main__":
         sys.exit(0)
 
     args = parser.parse_args()
+
+    LOG_FILE = args.log
 
     result = get_suggestions(args.input, args.rag_top_k, args.rag_threshold)
 
