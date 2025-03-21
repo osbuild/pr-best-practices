@@ -240,9 +240,9 @@ def generate_mapping_for_pr(pr, relevant_issues, fallback_issues, model, auto_to
         # workaround if AI does not return the correct key
         if len(result.keys()) == 1:
             return result.get(list(result.keys())[0])
-        return "No good match found for this pull request."
+        return []
     except:
-        return "No good match found for this pull request."
+        return []
 
 
 def create_ai_summary(jira_issues, related_issues, model, auto_tokenizer_model, cache):
@@ -354,10 +354,10 @@ def map_prs_to_jira_rag(prs, jira_issues, jira_issues_revised, related_issues, f
                             "key": key,
                             "similarity": None
                         }
+                new_mapping['considered'] = [{'key': v['key'], 'similarity': v['similarity']} for v in relevant]
                 final_mapping[pr['url']] = new_mapping
             except:
-                pass
-            final_mapping[pr['url']] = mapping
+                final_mapping[pr['url']] = mapping
     return final_mapping
 
 def get_suggestions(json_input_file, rag_top_k, rag_threshold):
@@ -412,26 +412,25 @@ def get_suggestions(json_input_file, rag_top_k, rag_threshold):
     prefix = f"{JIRA_HOST}/browse/"
 
     ret = {}
-    for k, v in mapping_result.items():
-        debug_print(f"\n{k}:")
-        if k not in [p['url'] for p in pull_requests]:
-            debug_print(f"{"^"* len(k)} HALLUCINATION")
+    for pr, pr_data in mapping_result.items():
+        ret[pr] = {}
+        ret[pr]['match'] = []
+        debug_print(f"\n{pr}:")
+        if pr not in [p['url'] for p in pull_requests]:
+            debug_print(f"{"^"* len(pr)} HALLUCINATION")
             continue
-        if isinstance(v, str):
-            debug_print(v)
-            ret[k] = []
-        elif not v:
+        if isinstance(pr_data, str):
+            debug_print(pr_data)
+        elif not pr_data:
             debug_print("No good match found for this pull request.")
-            ret[k] = []
         else:
-            pr_issue_list = []
-            for i in v:
-                debug_print(f" {prefix}{i}")
-                if i not in [j['key'] for j in jira_issues] and i not in related_issues.keys():
-                    debug_print(f" {" " * len(prefix)}{"^"* len(i)} HALLUCINATION")
+            for issue_found, issue_data in pr_data.items():
+                debug_print(f" {prefix}{issue_found}")
+                if issue_found not in [j['key'] for j in jira_issues] and issue_found not in related_issues.keys():
+                    debug_print(f" {" " * len(prefix)}{"^"* len(issue_found)} HALLUCINATION")
                 else:
-                    pr_issue_list.append(i)
-            ret[k] = pr_issue_list
+                    ret[pr]['match'].append(issue_data)
+        ret[pr]['considered'] = pr_data['considered']
     return ret
 
 if __name__ == "__main__":
