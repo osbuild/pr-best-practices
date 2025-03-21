@@ -274,12 +274,17 @@ def main():
         sys.exit(1)
 
     child_issues = {}
+    cnt = 0
     for i in issues:
-        print(f"Fetching children of {i.key}…")
+        cnt += 1
+        print(f"Fetching children {cnt}/{len(issues)}: {i.key}…")
         child_issues[i.key] = cache.cached_result(f"jira_epic_children_{i.key}", jira.search_issues, jql_str=JIRA_CHILD_EPICS_JQL.format(jira_key=i.key))
     # print unique, sorted epics
     unique_sorted_epics = sorted(set([e for res in child_issues.values() for e in res]), key=lambda x: x.key)
-    related_issues = {}
+
+    # initialize related with already fetched, to avoid fetching duplicates
+    related_issues = { i.key: i for i in issues } | { i.key: i for i in unique_sorted_epics }
+
     print(f"All open Epics: {len(unique_sorted_epics)}")
     for i in unique_sorted_epics:
         print(f"  {i.key}: {i.fields.summary}")
@@ -310,11 +315,13 @@ def main():
     get_more = True
     while get_more:
         get_more = False
+        print(f"{len(related_issues)}", end="\r", flush=True)
         for i in list(related_issues.values()): # doing list to make a copy
             parent = getattr(i.fields, JIRA_PARENT_LINK_FIELD, None)
             if parent and parent not in related_issues.keys():
                 related_issues[parent] = cache.cached_result(f"jira_issue_{parent}", jira.issue, id=parent)
                 get_more = True
+    print("Done.")
 
     data_collection = {
         "pull_requests": [
