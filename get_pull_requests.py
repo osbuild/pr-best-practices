@@ -347,6 +347,7 @@ def main():
             k: { 'key': k, # "duplicate" the key for easier access
                  'summary': v.fields.summary,
                  'description': v.fields.description,
+                 'comments': [ {'author': c.author.displayName, 'body': c.body} for c in v.fields.comment.comments ],
                  'parent': getattr(v.fields, JIRA_PARENT_LINK_FIELD, None)
             } for k, v in related_issues.items()
         },
@@ -372,6 +373,7 @@ def main():
             k: { 'key': k, # "duplicate" the key for easier access
                  'summary': v.fields.summary,
                  'description': v.fields.description,
+                 'comments': [ {'author': c.author.displayName, 'body': c.body} for c in v.fields.comment.comments ],
                  'parent': getattr(v.fields, JIRA_PARENT_LINK_FIELD, None)
             } for k, v in related_issues.items()
         },
