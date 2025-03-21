@@ -23,8 +23,12 @@ generate `data_collection.json`.
                         (default: 0.2)
   --help-md             Show help as Markdown (default: False)
 ```
-If you have ollama running on another host (with a decent GPU), you might want
-to set the environment variable `OLLAMA_HOST` to something like
+You can override the URL to Jira by setting the environment variable
+`JIRA_HOST`. If you have ollama running on another host (with a decent GPU),
+you might want to set the environment variable `OLLAMA_HOST` to something like
 `http://other_host:11434`. Also, you might want to set the environment
-variable `OLLAMA_MODEL` to something you have downloaded in ollama.
+variable `OLLAMA_MODEL` to something you have downloaded in ollama. The
+environment variable `AI_REASONING_DEBUG` can be used to enable debug/verbose
+output. The transformer model for RAG is hardcoded in the script to `all-
+MiniLM-L6-v2`
 

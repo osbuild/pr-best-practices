@@ -1,5 +1,4 @@
 #!/usr/bin/python3
-
 """
 This script uses AI to summarize the Epics (with the context of their issue-parents)
 then uses sentence transformers (RAG) to find the most similar issues to the list of PRs.
@@ -14,26 +13,43 @@ import json
 import numpy as np
 import os
 import sys
+
+from sklearn.metrics.pairwise import cosine_similarity
 from utils import Cache, format_help_as_md
 
+doc_epilog = ""
+
+doc_epilog += """You can override the URL to Jira by setting the environment
+variable `JIRA_HOST`.
+"""
 JIRA_HOST = os.getenv("JIRA_HOST", "https://issues.redhat.com")
-# OLLAMA_MODEL ="granite3-dense:2b"
-# OLLAMA_MODEL ="granite3.2:8b"
-# OLLAMA_MODEL = "deepseek-r1:14b"
-# OLLAMA_MODEL = "mistral:7b-instruct"
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "deepseek-r1:7b")
 
 # auto tokenizer should match the `OLLAMA_MODEL` but
 # only needed for "debugging"
 AUTO_TOKENIZER_MODEL = "deepseek-ai/DeepSeek-R1"
 
 # Ollama API Endpoint
+doc_epilog += """If you have ollama running on another host (with a decent GPU), you might want to set
+the environment variable `OLLAMA_HOST` to something like `http://other_host:11434`.  
+"""
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 OLLAMA_API_GENERATE = os.getenv("OLLAMA_API_ENDPOINT", f"{OLLAMA_HOST}/api/generate")
 OLLAMA_API_MODELS = os.getenv("OLLAMA_API_MODELS", f"{OLLAMA_HOST}/api/tags")
-DEBUG = True
+
+doc_epilog += """Also, you might want to set the environment variable `OLLAMA_MODEL` to something you have
+downloaded in ollama.  
+"""
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "deepseek-r1:7b")
+# OLLAMA_MODEL ="granite3-dense:2b"
+# OLLAMA_MODEL ="granite3.2:8b"
+# OLLAMA_MODEL = "deepseek-r1:14b"
+# OLLAMA_MODEL = "mistral:7b-instruct"
+
+doc_epilog += "The environment variable `AI_REASONING_DEBUG` can be used to enable debug/verbose output.  \n"
+DEBUG = bool(os.getenv("AI_REASONING_DEBUG", False))
 
 SCENTENCE_TRANSFORMER_MODEL = "all-MiniLM-L6-v2"
+doc_epilog += f"The transformer model for RAG is hardcoded in the script to `{SCENTENCE_TRANSFORMER_MODEL}`"
 
 PROMPT_MAP_PR ="""You are an expert at mapping a GitHub pull request to Jira issues based on their descriptions, title and summary.
 
@@ -47,7 +63,7 @@ Retrieved Jira Issues:
 
 If the pull request description clearly relates to any of these Jira issues, list the matching Jira issue KEYs.
 You should prefer the "Retrieved Jira Issues"
-If the pull request is somehow related you can also suggest from those:
+If in doubt you can also match from those:
 {fallback_issues}
 
 Return your answer as a JSON object with the pull request URL as key and its value as either:
@@ -89,15 +105,15 @@ def debug_print(*args, **kwargs):
     if DEBUG:
         print(*args, **kwargs)
 
-def compute_embeddings(text_list):
+def compute_embeddings(text_list, embedding_model):
     """Compute embeddings for a list of texts."""
     return embedding_model.encode(text_list, convert_to_tensor=False)
 
-def build_jira_index(jira_issues, jira_issues_revised):
+def build_jira_index(jira_issues, jira_issues_revised, embedding_model):
     """Build an index for Jira issues with their embeddings."""
     texts = [f"{issue.get('summary', "")}.\n{issue.get('description', "")}\n{jira_issues_revised.get(issue['key'], {'key': 'None'}).get('ai_description', "")}" for issue in jira_issues]
 
-    embeddings = compute_embeddings(texts)
+    embeddings = compute_embeddings(texts, embedding_model)
     index = []
     for idx, issue in enumerate(jira_issues):
         index.append({
@@ -108,9 +124,9 @@ def build_jira_index(jira_issues, jira_issues_revised):
         })
     return index
 
-def retrieve_relevant_issues(pr_description, jira_index, top_k, threshold):
+def retrieve_relevant_issues(pr_description, jira_index, top_k, threshold, embedding_model):
     """Retrieve the top_k most similar Jira issues above a similarity threshold."""
-    pr_embedding = compute_embeddings([pr_description])[0]
+    pr_embedding = compute_embeddings([pr_description], embedding_model)[0]
     embeddings = np.array([item['embedding'] for item in jira_index])
     pr_embedding = np.array(pr_embedding).reshape(1, -1)
     sims = cosine_similarity(pr_embedding, embeddings)[0]
@@ -207,7 +223,7 @@ def process_ai(task, prompt, model, auto_tokenizer_model, expect_json=True):
         return {"error": str(e)}
 
 
-def generate_mapping_for_pr(pr, relevant_issues, fallback_issues, model, auto_tokenizer_model):
+def generate_mapping_for_pr(pr, relevant_issues, fallback_issues, model, auto_tokenizer_model, cache):
     prompt = PROMPT_MAP_PR.format(
         pr_url=pr['url'].replace("\"", "'"),
         pr_title=pr['title'].replace("\"", "'"),
@@ -229,7 +245,7 @@ def generate_mapping_for_pr(pr, relevant_issues, fallback_issues, model, auto_to
         return "No good match found for this pull request."
 
 
-def create_ai_summary(jira_issues, related_issues, model, auto_tokenizer_model):
+def create_ai_summary(jira_issues, related_issues, model, auto_tokenizer_model, cache):
     """Use the summary and description of the jira_issues as well as all it's parents
     to create a summary for the AI to learn from."""
     jira_issues_revised = {}
@@ -291,12 +307,13 @@ def create_ai_summary(jira_issues, related_issues, model, auto_tokenizer_model):
         jira_issues_revised[jira_issue.get("key")] = current_jira_issue
     return jira_issues_revised
 
-def map_prs_to_jira_rag(prs, jira_issues, jira_issues_revised, related_issues, model, auto_tokenizer_model, top_k, threshold):
+
+def map_prs_to_jira_rag(prs, jira_issues, jira_issues_revised, related_issues, fallback_issues, model, auto_tokenizer_model, top_k, threshold, cache, embedding_model):
     """
     For each pull request, retrieve the most similar Jira issues using embeddings,
     then generate a mapping via the LLM.
     """
-    jira_index = build_jira_index(jira_issues, jira_issues_revised)
+    jira_index = build_jira_index(jira_issues, jira_issues_revised, embedding_model)
     final_mapping = {}
     for pr in prs:
         # act as if referenced issues in the PR are part of the description for context
@@ -307,7 +324,7 @@ def map_prs_to_jira_rag(prs, jira_issues, jira_issues_revised, related_issues, m
                 description += related_issues[k]['description'].replace("\"", "'")
         pr['description'] = description
         data = f"{pr['url']} {pr['title']} {pr['description']}"
-        relevant = retrieve_relevant_issues(data, jira_index, top_k=top_k, threshold=threshold)
+        relevant = retrieve_relevant_issues(data, jira_index, top_k=top_k, threshold=threshold, embedding_model=embedding_model)
 
         # patch in defaults
         fallback_issue_data = []
@@ -322,7 +339,7 @@ def map_prs_to_jira_rag(prs, jira_issues, jira_issues_revised, related_issues, m
         if not relevant:
             final_mapping[pr['url']] = "No good match found for this pull request."
         else:
-            mapping = generate_mapping_for_pr(pr, relevant, fallback_issue_data, model=model, auto_tokenizer_model=auto_tokenizer_model)
+            mapping = generate_mapping_for_pr(pr, relevant, fallback_issue_data, model=model, auto_tokenizer_model=auto_tokenizer_model, cache=cache)
             try:
                 new_mapping = {}
                 for key in mapping:
@@ -343,34 +360,10 @@ def map_prs_to_jira_rag(prs, jira_issues, jira_issues_revised, related_issues, m
             final_mapping[pr['url']] = mapping
     return final_mapping
 
-if __name__ == "__main__":
-
-    parser = argparse.ArgumentParser(allow_abbrev=False,
-        description=__doc__,
-        epilog="""If you have ollama running on another host (with a decent GPU), you might want to set
-        the environment variable `OLLAMA_HOST` to something like `http://other_host:11434`.
-        Also, you might want to set the environment variable `OLLAMA_MODEL` to something you have
-        downloaded in ollama.
-        """,
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
-    )
-    # also show the default in the help
-    parser.add_argument("--input", help="Input JSON file containing pull requests and Jira issues", default="data_collection.json")
-    parser.add_argument("--rag_top_k", help="Number of top similar Jira issues to return for each PR", default=5, type=int)
-    parser.add_argument("--rag_threshold", help="Threshold for similarity score to consider a Jira issue as similar to the given PR (range 0.0-1.0)", default=0.2, type=float)
-    parser.add_argument("--help-md", help="Show help as Markdown", action="store_true")
-
-    # workaround that required attribute are not given for --help-md
-    if "--help-md" in sys.argv:
-        print(format_help_as_md(parser))
-        sys.exit(0)
-
-    args = parser.parse_args()
-
+def get_suggestions(json_input_file, rag_top_k, rag_threshold):
     # doing import LATE here, because it would take too long just for the "help"
     print("Loading sentence transformers...")
     from sentence_transformers import SentenceTransformer
-    from sklearn.metrics.pairwise import cosine_similarity
     from transformers import AutoTokenizer
 
     print("Initializing Sentence Transformer…")
@@ -383,9 +376,6 @@ if __name__ == "__main__":
         cache = Cache("ai_cache.pkl")
     else:
         cache = Cache(None) # indicates not to use cache
-
-
-    json_input_file = args.input
     
     # Example pull requests and Jira issues
     #with open("data_collection.json") as f:
@@ -414,24 +404,57 @@ if __name__ == "__main__":
         print(f"Model {OLLAMA_MODEL} not available on {OLLAMA_HOST}.")
         sys.exit(1)
 
-    jira_issues_revised = create_ai_summary(jira_issues, related_issues, OLLAMA_MODEL, AUTO_TOKENIZER_MODEL)
+    jira_issues_revised = create_ai_summary(jira_issues, related_issues, OLLAMA_MODEL, AUTO_TOKENIZER_MODEL, cache)
 
-    mapping_result = map_prs_to_jira_rag(pull_requests, jira_issues, jira_issues_revised, related_issues, fallback_issues, model=OLLAMA_MODEL, auto_tokenizer_model=AUTO_TOKENIZER_MODEL, top_k=args.rag_top_k, threshold=args.rag_threshold)
-    print("Final Mapping Result:")
+    mapping_result = map_prs_to_jira_rag(pull_requests, jira_issues, jira_issues_revised, related_issues, fallback_issues, model=OLLAMA_MODEL, auto_tokenizer_model=AUTO_TOKENIZER_MODEL, top_k=rag_top_k, threshold=rag_threshold, cache=cache, embedding_model=embedding_model)
+    debug_print("Final Mapping Result:")
     # print(json.dumps(mapping_result, indent=2))
     prefix = f"{JIRA_HOST}/browse/"
 
+    ret = {}
     for k, v in mapping_result.items():
-        print(f"\n{k}:")
+        debug_print(f"\n{k}:")
         if k not in [p['url'] for p in pull_requests]:
-            print(f"{"^"* len(k)} HALLUCINATION")
+            debug_print(f"{"^"* len(k)} HALLUCINATION")
+            continue
         if isinstance(v, str):
-            print(v)
+            debug_print(v)
+            ret[k] = []
         elif not v:
-            print("No good match found for this pull request.")
+            debug_print("No good match found for this pull request.")
+            ret[k] = []
         else:
+            pr_issue_list = []
             for i in v:
-                print(f" {prefix}{i}")
+                debug_print(f" {prefix}{i}")
                 if i not in [j['key'] for j in jira_issues] and i not in related_issues.keys():
-                    print(f" {" " * len(prefix)}{"^"* len(i)} HALLUCINATION")
+                    debug_print(f" {" " * len(prefix)}{"^"* len(i)} HALLUCINATION")
+                else:
+                    pr_issue_list.append(i)
+            ret[k] = pr_issue_list
+    return ret
 
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser(allow_abbrev=False,
+        description=__doc__,
+        epilog=doc_epilog,
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+    # also show the default in the help
+    parser.add_argument("--input", help="Input JSON file containing pull requests and Jira issues", default="data_collection.json")
+    parser.add_argument("--rag_top_k", help="Number of top similar Jira issues to return for each PR", default=5, type=int)
+    parser.add_argument("--rag_threshold", help="Threshold for similarity score to consider a Jira issue as similar to the given PR (range 0.0-1.0)", default=0.2, type=float)
+    parser.add_argument("--help-md", help="Show help as Markdown", action="store_true")
+
+    # workaround that required attribute are not given for --help-md
+    if "--help-md" in sys.argv:
+        print(format_help_as_md(parser))
+        sys.exit(0)
+
+    args = parser.parse_args()
+
+    result = get_suggestions(args.input, args.rag_top_k, args.rag_threshold)
+
+    print("\nFinal Mapping Result:")
+    print(json.dumps(result, indent=2))
