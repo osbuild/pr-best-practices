@@ -33,8 +33,10 @@ doc_epilog += """If you have ollama running on another host (with a decent GPU),
 the environment variable `OLLAMA_HOST` to something like `http://other_host:11434`.  
 """
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-OLLAMA_API_GENERATE = os.getenv("OLLAMA_API_ENDPOINT", f"{OLLAMA_HOST}/api/generate")
+OLLAMA_API_GENERATE = os.getenv("OLLAMA_API_GENERATE", f"{OLLAMA_HOST}/api/generate")
 OLLAMA_API_MODELS = os.getenv("OLLAMA_API_MODELS", f"{OLLAMA_HOST}/api/tags")
+OLLAMA_API_SHOW = os.getenv("OLLAMA_API_SHOW", f"{OLLAMA_HOST}/api/show")
+
 
 doc_epilog += """Also, you might want to set the environment variable `OLLAMA_MODEL` to something you have
 downloaded in ollama.  
@@ -44,6 +46,8 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "deepseek-r1:7b")
 # OLLAMA_MODEL ="granite3.2:8b"
 # OLLAMA_MODEL = "deepseek-r1:14b"
 # OLLAMA_MODEL = "mistral:7b-instruct"
+# OLLAMA_MODEL = "mistral-nemo:12b"
+
 
 doc_epilog += "The environment variable `AI_REASONING_DEBUG` can be used to enable debug/verbose output.  \n"
 DEBUG = bool(os.getenv("AI_REASONING_DEBUG", False))
@@ -411,6 +415,16 @@ def get_suggestions(json_input_file, rag_top_k, rag_threshold):
         print(f"Model {OLLAMA_MODEL} not available on {OLLAMA_HOST}.")
         sys.exit(1)
 
+    print("Get model info…")
+    response = requests.post(OLLAMA_API_SHOW, timeout=60, json={"model": OLLAMA_MODEL})
+    model_info = response.json()
+    model_context_length_key = list(filter(lambda k: "context_length" in k, model_info.get('model_info',{}).keys()))
+    if len(model_context_length_key) == 1:
+        ctx_len = model_info.get('model_info',{}).get(model_context_length_key[0])
+        print(f"Using {OLLAMA_MODEL} (Context length: {ctx_len})")
+    else:
+        print("Error reading 'context_length' from 'model card' - just informational, continuing…")
+        print(model_info.get('model_info',{}))
     jira_issues_revised = create_ai_summary(jira_issues, related_issues, OLLAMA_MODEL, AUTO_TOKENIZER_MODEL, cache)
 
     mapping_result = map_prs_to_jira_rag(pull_requests, jira_issues, jira_issues_revised, related_issues, fallback_issues, model=OLLAMA_MODEL, auto_tokenizer_model=AUTO_TOKENIZER_MODEL, top_k=rag_top_k, threshold=rag_threshold, cache=cache, embedding_model=embedding_model)
