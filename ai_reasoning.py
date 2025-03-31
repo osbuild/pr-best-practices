@@ -41,13 +41,7 @@ OLLAMA_API_SHOW = os.getenv("OLLAMA_API_SHOW", f"{OLLAMA_HOST}/api/show")
 doc_epilog += """Also, you might want to set the environment variable `OLLAMA_MODEL` to something you have
 downloaded in ollama.  
 """
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "deepseek-r1:7b")
-# OLLAMA_MODEL ="granite3-dense:2b"
-# OLLAMA_MODEL ="granite3.2:8b"
-# OLLAMA_MODEL = "deepseek-r1:14b"
-# OLLAMA_MODEL = "mistral:7b-instruct"
-# OLLAMA_MODEL = "mistral-nemo:12b"
-
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "granite3.2:8b")
 
 doc_epilog += "The environment variable `AI_REASONING_DEBUG` can be used to enable debug/verbose output.  \n"
 DEBUG = bool(os.getenv("AI_REASONING_DEBUG", False))
@@ -146,8 +140,8 @@ def retrieve_relevant_issues(pr_description, jira_index, top_k, threshold, embed
         if sims[idx] >= threshold:
             relevant.append({
                 'key': jira_index[idx]['key'],
-                'summary': jira_index[idx]['summary'],
-                'description': jira_index[idx]['description'],
+                'summary': jira_index[idx].get('summary',""),
+                'description': jira_index[idx].get('description',""),
                 'similarity': float(sims[idx])
             })
     return relevant
@@ -326,7 +320,10 @@ def map_prs_to_jira_rag(prs, jira_issues, jira_issues_revised, related_issues, f
     final_mapping = {}
     for pr in prs:
         # act as if referenced issues in the PR are part of the description for context
-        description = pr['description'].replace("\"", "'")
+        description = pr.get("description", "")
+        if description is None:
+            description = ""
+        description = description.replace("\"", "'")
         for k in related_issues.keys():
             if pr['url'] in k:
                 description += related_issues[k]['summary'].replace("\"", "'")

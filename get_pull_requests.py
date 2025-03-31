@@ -14,7 +14,7 @@ import time
 import pickle
 import sys
 import json
-from jira import JIRA
+from jira import JIRA, JIRAError
 
 from ghapi.all import GhApi
 from fastcore.foundation import L
@@ -152,15 +152,17 @@ def get_pull_request_list(github_api, org, repo, author):
     archived_repos = []
 
     if author:
-        author_query = f"author:{author}"
+        author_query = f" author:{author}"
+    else:
+        author_query = ""
 
     if repo:
         print(f"Fetching pull requests from one repository: {org}/{repo}")
-        query = f"repo:{org}/{repo} type:pr is:open {author_query}"
+        query = f"repo:{org}/{repo} type:pr is:open{author_query}"
         entire_org = False
     else:
         print(f"Fetching pull requests from an entire organisation: {org}")
-        query = f"org:{org} type:pr is:open {author_query}"
+        query = f"org:{org} type:pr is:open{author_query}"
         entire_org = True
         archived_repos = get_archived_repos(github_api, org)
 
@@ -296,7 +298,14 @@ def main():
         print(f"  {' ' * len(i.key)}  {fieldmap['customfield_12313140']}: {i.fields.customfield_12313140}")
         parent = getattr(i.fields, JIRA_PARENT_LINK_FIELD, None)
         if parent and parent not in related_issues.keys():
-            related_issues[parent] = cache.cached_result(f"jira_issue_{parent}", jira.issue, id=parent)
+            try:
+                related_issues[parent] = cache.cached_result(f"jira_issue_{parent}", jira.issue, id=parent)
+            except JIRAError as e:
+                # skip issues without permissions
+                if e.status_code in [403, 404]:
+                    print(f"Skip getting JIRA issue {k}: {e.text}")
+                    continue
+                raise e
 
     # skip though the PR title and description
     # and add the content of referenced jira issues
@@ -308,14 +317,28 @@ def main():
 
         jira_keys = find_all_jira_keys(item['title'])
         for k in jira_keys:
-            related_issues[f"{pr_key}_{ref_nr}"] = cache.cached_result(f"jira_issue_title_{pr_key}_{ref_nr}", jira.issue, id=k)
-            ref_nr += 1
+            try:
+                related_issues[f"{pr_key}_{ref_nr}"] = cache.cached_result(f"jira_issue_title_{pr_key}_{ref_nr}", jira.issue, id=k)
+                ref_nr += 1
+            except JIRAError as e:
+                # skip issues without permissions
+                if e.status_code in [403, 404]:
+                    print(f"Skip getting JIRA issue {k}: {e.text}")
+                    continue
+                raise e
 
-        jira_keys = find_all_jira_keys(item['description'])
-        for k in jira_keys:
-            related_issues[f"{pr_key}_{ref_nr}"] = cache.cached_result(f"jira_issue_description_{pr_key}_{ref_nr}", jira.issue, id=k)
-            ref_nr += 1
-
+        if item['description']:
+            jira_keys = find_all_jira_keys(item['description'])
+            for k in jira_keys:
+                try:
+                    related_issues[f"{pr_key}_{ref_nr}"] = cache.cached_result(f"jira_issue_description_{pr_key}_{ref_nr}", jira.issue, id=k)
+                    ref_nr += 1
+                except JIRAError as e:
+                    # skip issues without permissions
+                    if e.status_code in [403, 404]:
+                        print(f"Skip getting JIRA issue {k}: {e.text}")
+                        continue
+                    raise e
     # get all the parents for more context
     print("Fetching related issues…")
     get_more = True
@@ -325,8 +348,15 @@ def main():
         for i in list(related_issues.values()): # doing list to make a copy
             parent = getattr(i.fields, JIRA_PARENT_LINK_FIELD, None)
             if parent and parent not in related_issues.keys():
-                related_issues[parent] = cache.cached_result(f"jira_issue_{parent}", jira.issue, id=parent)
-                get_more = True
+                try:
+                    related_issues[parent] = cache.cached_result(f"jira_issue_{parent}", jira.issue, id=parent)
+                    get_more = True
+                except JIRAError as e:
+                    # skip issues without permissions
+                    if e.status_code in [403, 404]:
+                        print(f"Skip getting JIRA issue {k}: {e.text}")
+                        continue
+                    raise e
     print("Done.")
 
     data_collection = {
@@ -339,13 +369,16 @@ def main():
         "jira_issues": [
             { 'key': i.key,
               'summary': i.fields.summary,
+              'assignee': i.fields.assignee.displayName if i.fields.assignee else "None",
               'description': i.fields.description,
+              'comments': [ {'author': c.author.displayName, 'body': c.body} for c in i.fields.comment.comments ],
               'parent': getattr(i.fields, JIRA_PARENT_LINK_FIELD, None)
             } for i in unique_sorted_epics
         ],
         "related_issues": {
             k: { 'key': k, # "duplicate" the key for easier access
                  'summary': v.fields.summary,
+                 'assignee': v.fields.assignee.displayName if v.fields.assignee else "None",
                  'description': v.fields.description,
                  'comments': [ {'author': c.author.displayName, 'body': c.body} for c in v.fields.comment.comments ],
                  'parent': getattr(v.fields, JIRA_PARENT_LINK_FIELD, None)
@@ -365,13 +398,16 @@ def main():
         "jira_issues": [
             { 'key': i.key,
               'summary': i.fields.summary,
+              'assignee': i.fields.assignee.displayName if i.fields.assignee else "None",
               'description': i.fields.description,
+              'comments': [ {'author': c.author.displayName, 'body': c.body} for c in i.fields.comment.comments ],
               'parent': getattr(i.fields, JIRA_PARENT_LINK_FIELD, None)
             } for i in unique_sorted_epics
         ],
         "related_issues": {
             k: { 'key': k, # "duplicate" the key for easier access
                  'summary': v.fields.summary,
+                 'assignee': v.fields.assignee.displayName if v.fields.assignee else "None",
                  'description': v.fields.description,
                  'comments': [ {'author': c.author.displayName, 'body': c.body} for c in v.fields.comment.comments ],
                  'parent': getattr(v.fields, JIRA_PARENT_LINK_FIELD, None)
