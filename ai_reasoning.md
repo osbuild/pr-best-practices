@@ -1,7 +1,8 @@
 # Usage
 ```
        ai_reasoning.py [-h] [--input INPUT] [--rag_top_k RAG_TOP_K]
-                       [--rag_threshold RAG_THRESHOLD] [--log LOG] [--help-md]
+                       [--rag_threshold RAG_THRESHOLD] [--log LOG]
+                       [--output OUTPUT] [--help-md]
 ```
 This script uses AI to summarize the Epics (with the context of their issue-
 parents) then uses sentence transformers (RAG) to find the most similar issues
@@ -22,6 +23,8 @@ generate `data_collection.json`.
                         issue as similar to the given PR (range 0.0-1.0)
                         (default: 0.2)
   --log LOG             Create a logfile with debug messages (default: )
+  --output OUTPUT       Output JSON file containing the mapping result
+                        (default: rag_mapping_result.json)
   --help-md             Show help as Markdown (default: False)
 ```
 You can override the URL to Jira by setting the environment variable

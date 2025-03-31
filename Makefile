@@ -17,12 +17,18 @@ GENERATED_MDs=pr_best_practices.md jira_bot.md update_pr.md get_pull_requests.md
 	echo '```' >>$@ \
 	)
 
+GENERATED_SVGs=get_pull_requests.svg ai_reasoning.svg
+
+%.svg: %.puml
+	plantuml -tsvg $<
+
 .PHONY: docs
-docs: $(GENERATED_MDs) ## update all generated docs
+docs: $(GENERATED_MDs) $(GENERATED_SVGs) ## update all generated docs
 
 .PHONY: clean
 clean: clean_cache ## clean all generated files
 	rm -f $(GENERATED_MDs)
+	rm -f $(GENERATED_SVGs)
 
 .PHONY: clean-cache
 clean-cache:  ## clean only the caches
