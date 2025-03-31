@@ -51,6 +51,7 @@ JIRA_PARENT_LINK_FIELD_NAME = "Parent Link"
 JIRA_PARENT_LINK_FIELD = "customfield_12313140"
 
 if os.getenv("PR_BEST_PRACTICES_TEST_CACHE"):
+    print("Loading cache…")
     import requests_cache
     # NOTE: this will cache forever, until you remove the `test_cache.sqlite`
     requests_cache.install_cache(

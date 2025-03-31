@@ -360,7 +360,8 @@ def map_prs_to_jira_rag(prs, jira_issues, jira_issues_revised, related_issues, f
                             "key": key,
                             "similarity": None
                         }
-                new_mapping['considered'] = [{'key': v['key'], 'similarity': v['similarity']} for v in relevant]
+                    new_mapping[key]["url"] = f"{JIRA_HOST}/browse/{key}"
+                new_mapping['considered'] = [{'key': v['key'], 'similarity': v['similarity'], 'url': f"{JIRA_HOST}/browse/{v['key']}"} for v in relevant]
                 final_mapping[pr['url']] = new_mapping
             except:
                 final_mapping[pr['url']] = mapping
@@ -378,9 +379,8 @@ def get_suggestions(json_input_file, rag_top_k, rag_threshold):
     # Initialize the embedding model (ensure you have the required package installed)
     embedding_model = SentenceTransformer(SCENTENCE_TRANSFORMER_MODEL)
 
-    if __name__ == "__main__":
-        print("Loading cache…")
     if os.getenv("PR_BEST_PRACTICES_TEST_CACHE"):
+        print("Loading cache…")
         cache = Cache("ai_cache.pkl")
     else:
         cache = Cache(None) # indicates not to use cache
