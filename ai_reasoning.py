@@ -463,6 +463,7 @@ if __name__ == "__main__":
     parser.add_argument("--rag_top_k", help="Number of top similar Jira issues to return for each PR", default=5, type=int)
     parser.add_argument("--rag_threshold", help="Threshold for similarity score to consider a Jira issue as similar to the given PR (range 0.0-1.0)", default=0.2, type=float)
     parser.add_argument("--log", help="Create a logfile with debug messages", default="", type=str)
+    parser.add_argument("--output", help="Output JSON file containing the mapping result", default="rag_mapping_result.json")
     parser.add_argument("--help-md", help="Show help as Markdown", action="store_true")
 
     # workaround that required attribute are not given for --help-md
@@ -478,3 +479,5 @@ if __name__ == "__main__":
 
     print("\nFinal Mapping Result:")
     print(json.dumps(result, indent=2))
+    with open(args.output, "w") as f:
+        json.dump(result, f, indent=2)
