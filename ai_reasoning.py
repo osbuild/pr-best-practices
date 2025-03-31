@@ -185,9 +185,13 @@ def process_ai(task, prompt, model, auto_tokenizer_model, expect_json=True):
     For a given pull request and its retrieved Jira issues,
     generate a mapping using the LLM.
     """
+    global ctx_len
     print(task)
     tokenizer = AutoTokenizer.from_pretrained(auto_tokenizer_model)
     tokens = tokenizer.encode(prompt)
+    if len(tokens) > ctx_len:
+        print(f"WARNING: Current prompt seems bigger than the model's context length {ctx_len}!")
+        print("         Response might ignore some of the input!")
     # hint: e.g. deepseek can do ~ 2000 tokens - we could iterate and give more issues 
     # until we are just below 2000 tokens. Could be an extention for the future…
     debug_print(f"Current prompt: {len(prompt.split())} words = {len(tokens)} tokens")
@@ -368,6 +372,7 @@ def map_prs_to_jira_rag(prs, jira_issues, jira_issues_revised, related_issues, f
     return final_mapping
 
 def get_suggestions(json_input_file, rag_top_k, rag_threshold):
+    global ctx_len
     # doing import LATE here, because it would take too long just for the "help"
     print("Loading sentence transformers...")
     global SentenceTransformer
