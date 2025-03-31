@@ -292,6 +292,40 @@ def main():
     # initialize related with already fetched, to avoid fetching duplicates
     related_issues = { i.key: i for i in issues } | { i.key: i for i in unique_sorted_epics }
 
+    print("Search PR titles and description for jira references")
+    # skip though the PR title and description
+    # and add the content of referenced jira issues
+    # NOTE: related_issues now also contain keys with the PR-url
+    # which are issues mentioned in the PR
+    for item in pull_request_list:
+        pr_key = item['html_url']
+        print(f"Searching in: {pr_key}")
+        ref_nr = 0
+
+        jira_keys = find_all_jira_keys(item['title'])
+        for k in jira_keys:
+            try:
+                unique_sorted_epics.append(cache.cached_result(f"jira_issue_{k}", jira.issue, id=k))
+                ref_nr += 1
+            except JIRAError as e:
+                # skip issues without permissions
+                if e.status_code in [403, 404]:
+                    print(f"Skip getting JIRA issue {k}: {e.text}")
+                    continue
+                raise e
+        if item['description']:
+            jira_keys = find_all_jira_keys(item['description'])
+            for k in jira_keys:
+                try:
+                    unique_sorted_epics.append(cache.cached_result(f"jira_issue_{k}", jira.issue, id=k))
+                    ref_nr += 1
+                except JIRAError as e:
+                    # skip issues without permissions
+                    if e.status_code in [403, 404]:
+                        print(f"Skip getting JIRA issue {k}: {e.text}")
+                        continue
+                    raise e
+
     print(f"All open Epics: {len(unique_sorted_epics)}")
     for i in unique_sorted_epics:
         print(f"  {i.key}: {i.fields.summary}")
@@ -308,39 +342,6 @@ def main():
                     continue
                 raise e
 
-    print("Search PR titles and description for jira references")
-    # skip though the PR title and description
-    # and add the content of referenced jira issues
-    # NOTE: related_issues now also contain keys with the PR-url
-    # which are issues mentioned in the PR
-    for item in pull_request_list:
-        pr_key = item['html_url']
-        print(f"Searching in: {pr_key}")
-        ref_nr = 0
-
-        jira_keys = find_all_jira_keys(item['title'])
-        for k in jira_keys:
-            try:
-                related_issues[k] = cache.cached_result(f"jira_issue_{k}", jira.issue, id=k)
-                ref_nr += 1
-            except JIRAError as e:
-                # skip issues without permissions
-                if e.status_code in [403, 404]:
-                    print(f"Skip getting JIRA issue {k}: {e.text}")
-                    continue
-                raise e
-        if item['description']:
-            jira_keys = find_all_jira_keys(item['description'])
-            for k in jira_keys:
-                try:
-                    related_issues[k] = cache.cached_result(f"jira_issue_{k}", jira.issue, id=k)
-                    ref_nr += 1
-                except JIRAError as e:
-                    # skip issues without permissions
-                    if e.status_code in [403, 404]:
-                        print(f"Skip getting JIRA issue {k}: {e.text}")
-                        continue
-                    raise e
     # get all the parents for more context
     print("Fetching related issues…")
     get_more = True
@@ -356,7 +357,7 @@ def main():
                 except JIRAError as e:
                     # skip issues without permissions
                     if e.status_code in [403, 404]:
-                        print(f"Skip getting JIRA issue {k}: {e.text}")
+                        print(f"Skip getting JIRA issue {parent}: {e.text}")
                         continue
                     raise e
     print("Done.")
