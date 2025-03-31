@@ -5,6 +5,8 @@ then uses sentence transformers (RAG) to find the most similar issues to the lis
 Finally uses AI to figure out which of the issues match the PR the most.
 
 It expects `get_pull_requests.py` to be run before and generate `data_collection.json`.
+
+TBD: rewrite with langchain (e.g. using GitHub document loader directly?)
 """
 
 import argparse
@@ -265,14 +267,19 @@ def create_ai_summary(jira_issues, related_issues, model, auto_tokenizer_model, 
         # remove None values
         summary = jira_issue.get('summary', '') if jira_issue.get('summary', '') else ""
         description = jira_issue.get('description', '') if jira_issue.get('description', '') else ""
+
+        # present the content of the current jira issue to AI in a json format
+        # TBD: test if AIs can handle markdown better?
         ai_input.append(f"""jira_issue = {{
-"key": "{jira_issue.get('key')}"
-"parent": "{jira_issue.get('parent')}"
-"summary": "{summary.replace('"', '\'')}"
-"description": "{description.replace('"', '\'')}"
+"key": "{jira_issue.get('key')}",
+"parent": "{jira_issue.get('parent')}",
+"summary": "{summary.replace('"', '\'')}",
+"description": "{description.replace('"', '\'')}",
+"comments": "{jira_issue.get('comments')}"
 }}
 
 """)
+        # also add all parents for context
         parent = related_issues.get(jira_issue.get('parent',""))
         parent_keys = []
         while parent:
@@ -281,10 +288,11 @@ def create_ai_summary(jira_issues, related_issues, model, auto_tokenizer_model, 
             description = parent.get('description', '') if parent.get('description', '') else ""
             parent_keys.append(parent.get('key'))
             ai_input.append(f"""a_parent_to_consider = {{
-"key": "{parent.get('key')}"
-"parent": "{parent.get('parent')}"
-"summary": "{summary.replace('"', '\'')}"
-"description": "{description.replace('"', '\'')}"
+"key": "{parent.get('key')}",
+"parent": "{parent.get('parent')}",
+"summary": "{summary.replace('"', '\'')}",
+"description": "{description.replace('"', '\'')}",
+"comments": "{jira_issue.get('comments')}"
 }}
 
 """)
