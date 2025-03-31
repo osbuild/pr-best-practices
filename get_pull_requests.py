@@ -50,6 +50,9 @@ JIRA_RE_KEY = r"[A-Z]+\-\d+"
 JIRA_PARENT_LINK_FIELD_NAME = "Parent Link"
 JIRA_PARENT_LINK_FIELD = "customfield_12313140"
 
+JIRA_EPIC_LINK_FIELD_NAME = "Epic Link"
+JIRA_EPIC_LINK_FIELD = "customfield_12311140"
+
 if os.getenv("PR_BEST_PRACTICES_TEST_CACHE"):
     print("Loading cache…")
     import requests_cache
@@ -219,6 +222,18 @@ def find_jira_key(pr_title, pr_html_url):
 
     return pr_title_link
 
+
+def get_parent(issue):
+    """Get the "parent" of the given issue.
+    That's either via parent link or epic link.
+    Just nesting the calls does not work if the field is _set_ to `None`
+    """
+    ret = getattr(issue.fields, JIRA_PARENT_LINK_FIELD, None)
+    if ret is None:
+        ret = getattr(issue.fields, JIRA_EPIC_LINK_FIELD, None)
+    return ret
+
+
 def main():
     """Return a list of pull requests for a given organisation, repository and assignee"""
     parser = argparse.ArgumentParser(allow_abbrev=False,
@@ -280,6 +295,12 @@ def main():
         print(f"Jira changed somehow, please update the script.")
         sys.exit(1)
 
+    if JIRA_EPIC_LINK_FIELD not in fieldmap or fieldmap[JIRA_EPIC_LINK_FIELD] != JIRA_EPIC_LINK_FIELD_NAME:
+        print(f"ERROR: Field {JIRA_EPIC_LINK_FIELD} is not {JIRA_EPIC_LINK_FIELD_NAME}.")
+        print(f"Jira changed somehow, please update the script.")
+        print(json.dumps(fieldmap, indent=2))
+        sys.exit(1)
+
     child_issues = {}
     cnt = 0
     for i in issues:
@@ -330,7 +351,7 @@ def main():
     for i in unique_sorted_epics:
         print(f"  {i.key}: {i.fields.summary}")
         print(f"  {' ' * len(i.key)}  {JIRA_HOST}/browse/{i.key}")
-        print(f"  {' ' * len(i.key)}  {fieldmap['customfield_12313140']}: {i.fields.customfield_12313140}")
+        print(f"  {' ' * len(i.key)}  Parent: {get_parent(i)}")
         parent = getattr(i.fields, JIRA_PARENT_LINK_FIELD, None)
         if parent and parent not in related_issues.keys():
             try:
@@ -338,7 +359,17 @@ def main():
             except JIRAError as e:
                 # skip issues without permissions
                 if e.status_code in [403, 404]:
-                    print(f"Skip getting JIRA issue {k}: {e.text}")
+                    print(f"Skip getting JIRA issue {parent}: {e.text}")
+                    continue
+                raise e
+        epic = getattr(i.fields, JIRA_EPIC_LINK_FIELD, None)
+        if epic and epic not in related_issues.keys():
+            try:
+                related_issues[epic] = cache.cached_result(f"jira_issue_{epic}", jira.issue, id=epic)
+            except JIRAError as e:
+                # skip issues without permissions
+                if e.status_code in [403, 404]:
+                    print(f"Skip getting JIRA issue {epic}: {e.text}")
                     continue
                 raise e
 
@@ -375,7 +406,7 @@ def main():
               'assignee': i.fields.assignee.displayName if i.fields.assignee else "None",
               'description': i.fields.description,
               'comments': [ {'author': c.author.displayName, 'body': c.body} for c in i.fields.comment.comments ],
-              'parent': getattr(i.fields, JIRA_PARENT_LINK_FIELD, None)
+              'parent': get_parent(i)
             } for i in unique_sorted_epics
         ],
         "related_issues": {
@@ -384,7 +415,7 @@ def main():
                  'assignee': v.fields.assignee.displayName if v.fields.assignee else "None",
                  'description': v.fields.description,
                  'comments': [ {'author': c.author.displayName, 'body': c.body} for c in v.fields.comment.comments ],
-                 'parent': getattr(v.fields, JIRA_PARENT_LINK_FIELD, None)
+                 'parent': get_parent(v)
             } for k, v in related_issues.items()
         },
         "fallback_issues": FALLBACK_ISSUES
@@ -404,7 +435,7 @@ def main():
               'assignee': i.fields.assignee.displayName if i.fields.assignee else "None",
               'description': i.fields.description,
               'comments': [ {'author': c.author.displayName, 'body': c.body} for c in i.fields.comment.comments ],
-              'parent': getattr(i.fields, JIRA_PARENT_LINK_FIELD, None)
+              'parent': get_parent(i)
             } for i in unique_sorted_epics
         ],
         "related_issues": {
@@ -413,7 +444,7 @@ def main():
                  'assignee': v.fields.assignee.displayName if v.fields.assignee else "None",
                  'description': v.fields.description,
                  'comments': [ {'author': c.author.displayName, 'body': c.body} for c in v.fields.comment.comments ],
-                 'parent': getattr(v.fields, JIRA_PARENT_LINK_FIELD, None)
+                 'parent': get_parent(v)
             } for k, v in related_issues.items()
         },
         "fallback_issues": FALLBACK_ISSUES
