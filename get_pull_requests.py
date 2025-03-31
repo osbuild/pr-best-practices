@@ -308,18 +308,20 @@ def main():
                     continue
                 raise e
 
+    print("Search PR titles and description for jira references")
     # skip though the PR title and description
     # and add the content of referenced jira issues
     # NOTE: related_issues now also contain keys with the PR-url
     # which are issues mentioned in the PR
     for item in pull_request_list:
         pr_key = item['html_url']
+        print(f"Searching in: {pr_key}")
         ref_nr = 0
 
         jira_keys = find_all_jira_keys(item['title'])
         for k in jira_keys:
             try:
-                related_issues[f"{pr_key}_{ref_nr}"] = cache.cached_result(f"jira_issue_title_{pr_key}_{ref_nr}", jira.issue, id=k)
+                related_issues[k] = cache.cached_result(f"jira_issue_{k}", jira.issue, id=k)
                 ref_nr += 1
             except JIRAError as e:
                 # skip issues without permissions
@@ -327,12 +329,11 @@ def main():
                     print(f"Skip getting JIRA issue {k}: {e.text}")
                     continue
                 raise e
-
         if item['description']:
             jira_keys = find_all_jira_keys(item['description'])
             for k in jira_keys:
                 try:
-                    related_issues[f"{pr_key}_{ref_nr}"] = cache.cached_result(f"jira_issue_description_{pr_key}_{ref_nr}", jira.issue, id=k)
+                    related_issues[k] = cache.cached_result(f"jira_issue_{k}", jira.issue, id=k)
                     ref_nr += 1
                 except JIRAError as e:
                     # skip issues without permissions
