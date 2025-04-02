@@ -3,3 +3,10 @@ requests
 requests_cache
 numpy
 sentence_transformers
+langchain_community
+truststore
+openai
+# maybe needed for streaming
+tiktoken
+# maybe not needed
+pip-system-certs

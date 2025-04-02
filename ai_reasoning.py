@@ -16,6 +16,8 @@ import numpy as np
 import os
 import sys
 
+import concurrent.futures
+
 from sklearn.metrics.pairwise import cosine_similarity
 from utils import Cache, format_help_as_md
 
@@ -34,11 +36,17 @@ AUTO_TOKENIZER_MODEL = "deepseek-ai/DeepSeek-R1"
 doc_epilog += """If you have ollama running on another host (with a decent GPU), you might want to set
 the environment variable `OLLAMA_HOST` to something like `http://other_host:11434`.  
 """
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+OLLAMA_HOST = os.getenv("OLLAMA_HOST")
 OLLAMA_API_GENERATE = os.getenv("OLLAMA_API_GENERATE", f"{OLLAMA_HOST}/api/generate")
 OLLAMA_API_MODELS = os.getenv("OLLAMA_API_MODELS", f"{OLLAMA_HOST}/api/tags")
 OLLAMA_API_SHOW = os.getenv("OLLAMA_API_SHOW", f"{OLLAMA_HOST}/api/show")
 
+doc_epilog += """Alternatively you can also use vLLM via OpenAI API with `MODEL_API`, `MODEL_ID`
+and `USER_KEY`.  
+"""
+MODEL_API = os.getenv("MODEL_API")
+MODEL_ID = os.getenv("MODEL_ID", "/data/granite-3.2-8b-instruct")
+USER_KEY = os.getenv("USER_KEY")
 
 doc_epilog += """Also, you might want to set the environment variable `OLLAMA_MODEL` to something you have
 downloaded in ollama.  
@@ -182,7 +190,7 @@ def cleanup_json_response(result):
     return real_result
 
 
-def process_ai(task, prompt, model, auto_tokenizer_model, expect_json=True):
+def process_ai(task, prompt, auto_tokenizer_model, expect_json=True):
     """
     For a given pull request and its retrieved Jira issues,
     generate a mapping using the LLM.
@@ -197,42 +205,51 @@ def process_ai(task, prompt, model, auto_tokenizer_model, expect_json=True):
     # hint: e.g. deepseek can do ~ 2000 tokens - we could iterate and give more issues 
     # until we are just below 2000 tokens. Could be an extention for the future…
     debug_print(f"Current prompt: {len(prompt.split())} words = {len(tokens)} tokens")
-    payload = {
-        "model": model,
-        "prompt": prompt,
-        "temperature": 0.0,
-        "max_tokens": 200
-    }
-    try:
-        response = requests.post(OLLAMA_API_GENERATE, json=payload, stream=True)
-        result = ""
-        for line in response.iter_lines():
-            if not line:
-                continue
-            decoded_line = line.decode('utf-8')
-            data = json.loads(decoded_line)
-            response = data.get("response", "")
-            debug_print(response, end="", flush=True)
-            result += response
 
-        debug_print("\n----")
+    result = ""
+    if OLLAMA_HOST:
+        payload = {
+            "model": OLLAMA_MODEL,
+            "prompt": prompt,
+            "temperature": 0.0,
+            "max_tokens": 200
+        }
+        try:
+            response = requests.post(OLLAMA_API_GENERATE, json=payload, stream=True)
+            for line in response.iter_lines():
+                if not line:
+                    continue
+                decoded_line = line.decode('utf-8')
+                data = json.loads(decoded_line)
+                response = data.get("response", "")
+                debug_print(response, end="", flush=True)
+                result += response
 
-        if expect_json:
-            real_result = cleanup_json_response(result)
-            ret = json.loads(real_result)
-        else:
-            ret = result
+            debug_print("\n----")
 
-        return ret
-    except Exception as e:
-        print(f"\nError while {task}: {e}")
+        except Exception as e:
+            print(f"\nError while {task}: {e}")
 
-        print("----")
+            print("----")
 
-        return {"error": str(e)}
+            return {"error": str(e)}
+    elif MODEL_API:
+        global llm
+        stream = llm.stream(prompt)
+        for line in stream:
+            debug_print(line, end="", flush=True)
+            result += line
+
+    if expect_json:
+        real_result = cleanup_json_response(result)
+        ret = json.loads(real_result)
+    else:
+        ret = result
+
+    return ret
 
 
-def generate_mapping_for_pr(pr, relevant_issues, fallback_issues, model, auto_tokenizer_model, cache):
+def generate_mapping_for_pr(pr, relevant_issues, fallback_issues, auto_tokenizer_model, cache):
     prompt = PROMPT_MAP_PR.format(
         pr_url=pr['url'].replace("\"", "'"),
         pr_title=pr['title'].replace("\"", "'"),
@@ -242,7 +259,7 @@ def generate_mapping_for_pr(pr, relevant_issues, fallback_issues, model, auto_to
     )
 
     task = f"Thinking about {pr['url']}: \"{pr['title'].replace("\"", "'")}\"…"
-    result = cache.cached_result(task, process_ai, task=task, prompt=prompt, model=model, auto_tokenizer_model=auto_tokenizer_model)
+    result = cache.cached_result(task, process_ai, task=task, prompt=prompt, auto_tokenizer_model=auto_tokenizer_model)
     try:
         if pr['url'] in result.keys():
             return result.get(pr['url'])
@@ -254,23 +271,17 @@ def generate_mapping_for_pr(pr, relevant_issues, fallback_issues, model, auto_to
         return []
 
 
-def create_ai_summary(jira_issues, related_issues, model, auto_tokenizer_model, cache):
-    """Use the summary and description of the jira_issues as well as all it's parents
-    to create a summary for the AI to learn from."""
-    jira_issues_revised = {}
-    i = 1
-    for jira_issue in jira_issues:
-        print(f"Creating AI Summary {i}/{len(jira_issues)}: {jira_issue.get('key')}")
-        i += 1
+def _process_ai_summary(jira_issue, i, jira_issues_len, related_issues, auto_tokenizer_model, cache):
+    print(f"{i}/{jira_issues_len}: Creating AI Summary for {jira_issue.get('key')}")
 
-        ai_input = []
-        # remove None values
-        summary = jira_issue.get('summary', '') if jira_issue.get('summary', '') else ""
-        description = jira_issue.get('description', '') if jira_issue.get('description', '') else ""
+    ai_input = []
+    # remove None values
+    summary = jira_issue.get('summary', '') if jira_issue.get('summary', '') else ""
+    description = jira_issue.get('description', '') if jira_issue.get('description', '') else ""
 
-        # present the content of the current jira issue to AI in a json format
-        # TBD: test if AIs can handle markdown better?
-        ai_input.append(f"""jira_issue = {{
+    # present the content of the current jira issue to AI in a json format
+    # TBD: test if AIs can handle markdown better?
+    ai_input.append(f"""jira_issue = {{
 "key": "{jira_issue.get('key')}",
 "parent": "{jira_issue.get('parent')}",
 "summary": "{summary.replace('"', '\'')}",
@@ -279,15 +290,15 @@ def create_ai_summary(jira_issues, related_issues, model, auto_tokenizer_model, 
 }}
 
 """)
-        # also add all parents for context
-        parent = related_issues.get(jira_issue.get('parent',""))
-        parent_keys = []
-        while parent:
-            # remove None values
-            summary = parent.get('summary', '') if parent.get('summary', '') else ""
-            description = parent.get('description', '') if parent.get('description', '') else ""
-            parent_keys.append(parent.get('key'))
-            ai_input.append(f"""a_parent_to_consider = {{
+    # also add all parents for context
+    parent = related_issues.get(jira_issue.get('parent',""))
+    parent_keys = []
+    while parent:
+        # remove None values
+        summary = parent.get('summary', '') if parent.get('summary', '') else ""
+        description = parent.get('description', '') if parent.get('description', '') else ""
+        parent_keys.append(parent.get('key'))
+        ai_input.append(f"""a_parent_to_consider = {{
 "key": "{parent.get('key')}",
 "parent": "{parent.get('parent')}",
 "summary": "{summary.replace('"', '\'')}",
@@ -296,34 +307,50 @@ def create_ai_summary(jira_issues, related_issues, model, auto_tokenizer_model, 
 }}
 
 """)
-            # get next parent
-            parent = related_issues.get(parent.get('parent',""))
-        current_jira_issue = {
-            "key": jira_issue.get("key"),
-            "summary": jira_issue.get("summary"),
-            "description": jira_issue.get("description"),
-            "ai_input": "".join(ai_input)
-        }
-        
-        
-        prompt = PROMPT_NEW_DEV_SUMMARY.format(
-            input=current_jira_issue['ai_input'],
-            jira_key=current_jira_issue['key']
-        )
+        # get next parent
+        parent = related_issues.get(parent.get('parent',""))
+    current_jira_issue = {
+        "key": jira_issue.get("key"),
+        "summary": jira_issue.get("summary"),
+        "description": jira_issue.get("description"),
+        "ai_input": "".join(ai_input)
+    }
+    
+    
+    prompt = PROMPT_NEW_DEV_SUMMARY.format(
+        input=current_jira_issue['ai_input'],
+        jira_key=current_jira_issue['key']
+    )
 
-        print(f"Taking parents in to account: {" ".join(parent_keys)}")
+    print(f"{i}/{jira_issues_len}: Taking parents in to account: {" ".join(parent_keys)}")
 
-        task = f"Thinking about {JIRA_HOST}/browse/{current_jira_issue['key']}: \"{current_jira_issue['summary']}\"…"
-        result = cache.cached_result(task, process_ai, task=task, prompt=prompt, model=model, auto_tokenizer_model=auto_tokenizer_model, expect_json=False)
-        try:
-            current_jira_issue['ai_description'] = result
-        except:
-            current_jira_issue['ai_description'] = ""
-        jira_issues_revised[jira_issue.get("key")] = current_jira_issue
+    task = f"{i}/{jira_issues_len}: Thinking about {JIRA_HOST}/browse/{current_jira_issue['key']}: \"{current_jira_issue['summary']}\"…"
+    result = cache.cached_result(task, process_ai, task=task, prompt=prompt, auto_tokenizer_model=auto_tokenizer_model, expect_json=False)
+    try:
+        current_jira_issue['ai_description'] = result
+    except:
+        current_jira_issue['ai_description'] = ""
+    return current_jira_issue
+
+
+def create_ai_summary(jira_issues, related_issues, auto_tokenizer_model, cache, threads):
+    """Use the summary and description of the jira_issues as well as all it's parents
+    to create a summary for the AI to learn from."""
+    jira_issues_revised = {}
+    i = 1
+    with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
+        tasks = []
+        for jira_issue in jira_issues:
+            tasks.append(executor.submit(_process_ai_summary, jira_issue, i, len(jira_issues), related_issues, auto_tokenizer_model, cache))
+            i += 1
+        for task in concurrent.futures.as_completed(tasks):
+            result = task.result()
+            jira_issues_revised[result['key']] = result
+
     return jira_issues_revised
 
 
-def map_prs_to_jira_rag(prs, jira_issues, jira_issues_revised, related_issues, fallback_issues, model, auto_tokenizer_model, top_k, threshold, cache, embedding_model):
+def map_prs_to_jira_rag(prs, jira_issues, jira_issues_revised, related_issues, fallback_issues, auto_tokenizer_model, top_k, threshold, cache, embedding_model):
     """
     For each pull request, retrieve the most similar Jira issues using embeddings,
     then generate a mapping via the LLM.
@@ -357,7 +384,7 @@ def map_prs_to_jira_rag(prs, jira_issues, jira_issues_revised, related_issues, f
         if not relevant:
             final_mapping[pr['url']] = "No good match found for this pull request."
         else:
-            mapping = generate_mapping_for_pr(pr, relevant, fallback_issue_data, model=model, auto_tokenizer_model=auto_tokenizer_model, cache=cache)
+            mapping = generate_mapping_for_pr(pr, relevant, fallback_issue_data, auto_tokenizer_model=auto_tokenizer_model, cache=cache)
             try:
                 new_mapping = {}
                 for key in mapping:
@@ -379,7 +406,7 @@ def map_prs_to_jira_rag(prs, jira_issues, jira_issues_revised, related_issues, f
                 final_mapping[pr['url']] = mapping
     return final_mapping
 
-def get_suggestions(json_input_file, rag_top_k, rag_threshold):
+def get_suggestions(json_input_file, rag_top_k, rag_threshold, threads):
     global ctx_len
     # doing import LATE here, because it would take too long just for the "help"
     print("Loading sentence transformers...")
@@ -409,33 +436,46 @@ def get_suggestions(json_input_file, rag_top_k, rag_threshold):
     related_issues = data['related_issues']
     fallback_issues = data['fallback_issues']
 
-    print(f"Getting available models from Ollama API on {OLLAMA_HOST}...")
-    response = requests.get(OLLAMA_API_MODELS, timeout=60)
+    if OLLAMA_HOST:
+        print(f"Getting available models from Ollama API on {OLLAMA_HOST}...")
+        response = requests.get(OLLAMA_API_MODELS, timeout=60)
 
-    model_response = response.json()
-    models = [model["name"] for model in model_response.get("models", [])]
+        model_response = response.json()
+        models = [model["name"] for model in model_response.get("models", [])]
 
-    print("Available models:")
-    if len(models) == 0:
-        print("No models available on Ollama API.")
+        print("Available models:")
+        if len(models) == 0:
+            print("No models available on Ollama API.")
+        else:
+            print(f" * {'\n * '.join(models)}")
+        print()
+        if OLLAMA_MODEL not in models:
+            print(f"Model {OLLAMA_MODEL} not available on {OLLAMA_HOST}.")
+            sys.exit(1)
+
+        print("Get model info…")
+        response = requests.post(OLLAMA_API_SHOW, timeout=60, json={"model": OLLAMA_MODEL})
+        model_info = response.json()
+        model_context_length_key = list(filter(lambda k: "context_length" in k, model_info.get('model_info',{}).keys()))
+        if len(model_context_length_key) == 1:
+            ctx_len = model_info.get('model_info',{}).get(model_context_length_key[0])
+            print(f"Using {OLLAMA_MODEL} (Context length: {ctx_len})")
+        else:
+            print("Error reading 'context_length' from 'model card' - just informational, continuing…")
+            print(model_info.get('model_info',{}))
     else:
-        print(f" * {'\n * '.join(models)}")
-    print()
-    if OLLAMA_MODEL not in models:
-        print(f"Model {OLLAMA_MODEL} not available on {OLLAMA_HOST}.")
-        sys.exit(1)
+        # TBD: get the context length! via vLLM
+        ctx_len = 128000
+        global llm
+        import truststore
+        truststore.inject_into_ssl()
+        from langchain_community.llms import VLLMOpenAI
 
-    print("Get model info…")
-    response = requests.post(OLLAMA_API_SHOW, timeout=60, json={"model": OLLAMA_MODEL})
-    model_info = response.json()
-    model_context_length_key = list(filter(lambda k: "context_length" in k, model_info.get('model_info',{}).keys()))
-    if len(model_context_length_key) == 1:
-        ctx_len = model_info.get('model_info',{}).get(model_context_length_key[0])
-        print(f"Using {OLLAMA_MODEL} (Context length: {ctx_len})")
-    else:
-        print("Error reading 'context_length' from 'model card' - just informational, continuing…")
-        print(model_info.get('model_info',{}))
-    jira_issues_revised = create_ai_summary(jira_issues, related_issues, OLLAMA_MODEL, AUTO_TOKENIZER_MODEL, cache)
+        max_request_tokens = 50000
+        llm = VLLMOpenAI(openai_api_key=USER_KEY, openai_api_base=f"{MODEL_API}/v1", model_name=MODEL_ID, streaming=True, max_tokens=ctx_len - max_request_tokens)
+
+
+    jira_issues_revised = create_ai_summary(jira_issues, related_issues, AUTO_TOKENIZER_MODEL, cache, threads)
 
     mapping_result = map_prs_to_jira_rag(pull_requests, jira_issues, jira_issues_revised, related_issues, fallback_issues, model=OLLAMA_MODEL, auto_tokenizer_model=AUTO_TOKENIZER_MODEL, top_k=rag_top_k, threshold=rag_threshold, cache=cache, embedding_model=embedding_model)
     debug_print("Final Mapping Result:")
@@ -477,6 +517,7 @@ if __name__ == "__main__":
     parser.add_argument("--rag_threshold", help="Threshold for similarity score to consider a Jira issue as similar to the given PR (range 0.0-1.0)", default=0.2, type=float)
     parser.add_argument("--log", help="Create a logfile with debug messages", default="", type=str)
     parser.add_argument("--output", help="Output JSON file containing the mapping result", default="rag_mapping_result.json")
+    parser.add_argument("--threads", help="Number of threads to run AI in parallel", default=1, type=int)
     parser.add_argument("--help-md", help="Show help as Markdown", action="store_true")
 
     # workaround that required attribute are not given for --help-md
@@ -486,9 +527,14 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    if MODEL_API is None and OLLAMA_HOST is None:
+        print("Please provide either `MODEL_API` or `OLLAMA_HOST`")
+        parser.print_help()
+        sys.exit(1)
+
     LOG_FILE = args.log
 
-    result = get_suggestions(args.input, args.rag_top_k, args.rag_threshold)
+    result = get_suggestions(args.input, args.rag_top_k, args.rag_threshold, args.threads)
 
     print("\nFinal Mapping Result:")
     print(json.dumps(result, indent=2))
