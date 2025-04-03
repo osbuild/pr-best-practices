@@ -137,7 +137,7 @@ def build_jira_index(jira_issues, jira_issues_revised, embedding_model):
         })
     return index
 
-def retrieve_relevant_issues(pr_description, jira_index, top_k, threshold, embedding_model):
+def retrieve_relevant_issues(pr_description, jira_index, pr, top_k, threshold, embedding_model):
     """Retrieve the top_k most similar Jira issues above a similarity threshold."""
     pr_embedding = compute_embeddings([pr_description], embedding_model)[0]
     embeddings = np.array([item['embedding'] for item in jira_index])
@@ -154,6 +154,9 @@ def retrieve_relevant_issues(pr_description, jira_index, top_k, threshold, embed
                 'description': jira_index[idx].get('description',""),
                 'similarity': float(sims[idx])
             })
+    pr_key = "_".join(pr['url'].split('/')[:-3])
+    with open(f"02_similarity_{pr_key}.json", "w") as f:
+        json.dump(relevant, f, indent=2)
     return relevant
 
 
@@ -369,7 +372,7 @@ def map_prs_to_jira_rag(prs, jira_issues, jira_issues_revised, related_issues, f
                 description += related_issues[k]['description'].replace("\"", "'")
         pr['description'] = description
         data = f"{pr['url']} {pr['title']} {pr['description']}"
-        relevant = retrieve_relevant_issues(data, jira_index, top_k=top_k, threshold=threshold, embedding_model=embedding_model)
+        relevant = retrieve_relevant_issues(data, jira_index, pr, top_k=top_k, threshold=threshold, embedding_model=embedding_model)
 
         # patch in defaults
         fallback_issue_data = []
@@ -476,8 +479,12 @@ def get_suggestions(json_input_file, rag_top_k, rag_threshold, threads):
 
 
     jira_issues_revised = create_ai_summary(jira_issues, related_issues, AUTO_TOKENIZER_MODEL, cache, threads)
+    
+    jira_ai_summary_path = "01_jira_ai_summary.json"
+    with open(jira_ai_summary_path, "w") as f:
+        json.dump(jira_issues_revised, f, indent=2)
 
-    mapping_result = map_prs_to_jira_rag(pull_requests, jira_issues, jira_issues_revised, related_issues, fallback_issues, model=OLLAMA_MODEL, auto_tokenizer_model=AUTO_TOKENIZER_MODEL, top_k=rag_top_k, threshold=rag_threshold, cache=cache, embedding_model=embedding_model)
+    mapping_result = map_prs_to_jira_rag(pull_requests, jira_issues, jira_issues_revised, related_issues, fallback_issues, auto_tokenizer_model=AUTO_TOKENIZER_MODEL, top_k=rag_top_k, threshold=rag_threshold, cache=cache, embedding_model=embedding_model)
     debug_print("Final Mapping Result:")
     # print(json.dumps(mapping_result, indent=2))
     prefix = f"{JIRA_HOST}/browse/"
