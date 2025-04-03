@@ -341,14 +341,22 @@ def create_ai_summary(jira_issues, related_issues, auto_tokenizer_model, cache, 
     to create a summary for the AI to learn from."""
     jira_issues_revised = {}
     i = 1
-    with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
-        tasks = []
+    if threads > 1:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
+            tasks = []
+            for jira_issue in jira_issues:
+                tasks.append(executor.submit(_process_ai_summary, jira_issue, i, len(jira_issues), related_issues, auto_tokenizer_model, cache))
+                i += 1
+            for task in concurrent.futures.as_completed(tasks):
+                try:
+                    result = task.result()
+                    jira_issues_revised[result['key']] = result
+                except Exception as e:
+                    print(f"Error processing {jira_issue['key']}: {e}")
+    else:
         for jira_issue in jira_issues:
-            tasks.append(executor.submit(_process_ai_summary, jira_issue, i, len(jira_issues), related_issues, auto_tokenizer_model, cache))
+            jira_issues_revised[jira_issue['key']] = _process_ai_summary(jira_issue, i, len(jira_issues), related_issues, auto_tokenizer_model, cache)
             i += 1
-        for task in concurrent.futures.as_completed(tasks):
-            result = task.result()
-            jira_issues_revised[result['key']] = result
 
     return jira_issues_revised
 
