@@ -10,6 +10,8 @@ TBD: rewrite with langchain (e.g. using GitHub document loader directly?)
 """
 
 import argparse
+import signal
+import threading
 import requests
 import json
 import numpy as np
@@ -199,6 +201,7 @@ def process_ai(task, prompt, auto_tokenizer_model, expect_json=True):
     generate a mapping using the LLM.
     """
     global ctx_len
+    global stop_event
     print(task)
     tokenizer = AutoTokenizer.from_pretrained(auto_tokenizer_model)
     tokens = tokenizer.encode(prompt)
@@ -220,6 +223,9 @@ def process_ai(task, prompt, auto_tokenizer_model, expect_json=True):
         try:
             response = requests.post(OLLAMA_API_GENERATE, json=payload, stream=True)
             for line in response.iter_lines():
+
+                if stop_event.is_set():
+                    return None
                 if not line:
                     continue
                 decoded_line = line.decode('utf-8')
@@ -240,6 +246,8 @@ def process_ai(task, prompt, auto_tokenizer_model, expect_json=True):
         global llm
         stream = llm.stream(prompt)
         for line in stream:
+            if stop_event.is_set():
+                return None
             debug_print(line, end="", flush=True)
             result += line
 
@@ -341,18 +349,28 @@ def create_ai_summary(jira_issues, related_issues, auto_tokenizer_model, cache, 
     to create a summary for the AI to learn from."""
     jira_issues_revised = {}
     i = 1
+    global stop_event
+    stop_event = threading.Event()
     if threads > 1:
         with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
             tasks = []
             for jira_issue in jira_issues:
                 tasks.append(executor.submit(_process_ai_summary, jira_issue, i, len(jira_issues), related_issues, auto_tokenizer_model, cache))
                 i += 1
-            for task in concurrent.futures.as_completed(tasks):
-                try:
-                    result = task.result()
-                    jira_issues_revised[result['key']] = result
-                except Exception as e:
-                    print(f"Error processing {jira_issue['key']}: {e}")
+            try:
+                for task in concurrent.futures.as_completed(tasks):
+                    try:
+                        result = task.result()
+                        jira_issues_revised[result['key']] = result
+                    except Exception as e:
+                        print(f"Error processing {jira_issue['key']}: {e}")
+            except KeyboardInterrupt:
+                print("KeyboardInterrupt received, cancelling tasks...")
+                for task in tasks:
+                    task.cancel()
+                executor.shutdown(wait=False)
+                stop_event.set()
+                raise
     else:
         for jira_issue in jira_issues:
             jira_issues_revised[jira_issue['key']] = _process_ai_summary(jira_issue, i, len(jira_issues), related_issues, auto_tokenizer_model, cache)
