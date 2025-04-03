@@ -274,7 +274,7 @@ def generate_mapping_for_pr(i, total, pr, relevant_issues, fallback_issues, auto
         fallback_issues=json.dumps(fallback_issues, indent=2)
     )
 
-    task = f"{i+1}/{total} thinking about {pr['url']}: \"{pr['title'].replace("\"", "'")}\"…"
+    task = f"{i}/{total} thinking about {pr['url']}: \"{pr['title'].replace("\"", "'")}\"…"
     result = cache.cached_result(task, process_ai, task=task, prompt=prompt, auto_tokenizer_model=auto_tokenizer_model)
     try:
         if pr['url'] in result.keys():
@@ -358,15 +358,16 @@ def create_ai_summary(jira_issues, related_issues, auto_tokenizer_model, cache, 
     stop_event = threading.Event()
     if threads > 1:
         with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
-            tasks = []
+            tasks = {}
             for jira_issue in jira_issues:
-                tasks.append(executor.submit(_process_ai_summary, jira_issue, i, len(jira_issues), related_issues, auto_tokenizer_model, cache))
+                task = executor.submit(_process_ai_summary, jira_issue, i, len(jira_issues), related_issues, auto_tokenizer_model, cache)
+                tasks[task] = jira_issue
                 i += 1
             try:
                 for task in concurrent.futures.as_completed(tasks):
+                    jira_issue = tasks[task]
                     try:
-                        result = task.result()
-                        jira_issues_revised[result['key']] = result
+                        jira_issues_revised[jira_issue['key']] = task.result()
                     except Exception as e:
                         print(f"Error processing {jira_issue['key']}: {e}")
             except KeyboardInterrupt:
@@ -445,16 +446,17 @@ def map_prs_to_jira_rag(prs, jira_issues, jira_issues_revised, related_issues, f
     stop_event = threading.Event()
     if threads > 1:
         with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
-            tasks = []
+            tasks = {}
             i = 1
             for pr in prs:
-                tasks.append(executor.submit(_process_pr, i, len(prs), pr, related_issues, jira_index, top_k, threshold, embedding_model, fallback_issues, auto_tokenizer_model, cache))
+                task = executor.submit(_process_pr, i, len(prs), pr, related_issues, jira_index, top_k, threshold, embedding_model, fallback_issues, auto_tokenizer_model, cache)
+                tasks[task] = pr
                 i += 1
             try:
                 for task in concurrent.futures.as_completed(tasks):
+                    pr = tasks[task]
                     try:
-                        result = task.result()
-                        final_mapping[result["key"]] = task.result()
+                        final_mapping[pr["url"]] = task.result()
                     except Exception as e:
                         print(f"Error processing {pr['url']}: {e}")
             except KeyboardInterrupt:
@@ -607,7 +609,10 @@ if __name__ == "__main__":
 
     print(f"\nFinal Mapping Result (saved to `{args.output}`):")
 
-    show_condensed = {k: [ { "key": m['key'], "url": m['url']} for m in v['match']] for k, v in result.items() }
+    show_condensed = {
+        k: [ { "key": m['key'], "url": m['url']} for m in v['match']]
+        for k, v in result.items() 
+    }
     print(json.dumps(show_condensed, indent=2))
 
     with open(args.output, "w") as f:
