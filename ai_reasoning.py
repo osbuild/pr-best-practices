@@ -252,8 +252,12 @@ def process_ai(task, prompt, auto_tokenizer_model, expect_json=True):
             result += line
 
     if expect_json:
-        real_result = cleanup_json_response(result)
-        ret = json.loads(real_result)
+        try:
+            real_result = cleanup_json_response(result)
+            ret = json.loads(real_result)
+        except Exception as e:
+            print(f"{task} Error while decoding json: {e}")
+            print(result)
     else:
         ret = result
 
@@ -569,7 +573,10 @@ if __name__ == "__main__":
 
     result = get_suggestions(args.input, args.rag_top_k, args.rag_threshold, args.threads)
 
-    print("\nFinal Mapping Result:")
-    print(json.dumps(result, indent=2))
+    print(f"\nFinal Mapping Result (saved to `{args.output}`):")
+
+    show_condensed = {k: v['match'] for k, v in result.items() }
+    print(json.dumps(show_condensed, indent=2))
+
     with open(args.output, "w") as f:
         json.dump(result, f, indent=2)
