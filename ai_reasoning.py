@@ -202,7 +202,7 @@ def process_ai(task, prompt, auto_tokenizer_model, expect_json=True):
     """
     global ctx_len
     global stop_event
-    print(task)
+    print(task, flush=True)
     tokenizer = AutoTokenizer.from_pretrained(auto_tokenizer_model)
     tokens = tokenizer.encode(prompt)
     if len(tokens) > ctx_len:
@@ -258,13 +258,14 @@ def process_ai(task, prompt, auto_tokenizer_model, expect_json=True):
         except Exception as e:
             print(f"{task} Error while decoding json: {e}")
             print(result)
+            ret = {"error": str(e)}
     else:
         ret = result
 
     return ret
 
 
-def generate_mapping_for_pr(pr, relevant_issues, fallback_issues, auto_tokenizer_model, cache):
+def generate_mapping_for_pr(i, total, pr, relevant_issues, fallback_issues, auto_tokenizer_model, cache):
     prompt = PROMPT_MAP_PR.format(
         pr_url=pr['url'].replace("\"", "'"),
         pr_title=pr['title'].replace("\"", "'"),
@@ -273,7 +274,7 @@ def generate_mapping_for_pr(pr, relevant_issues, fallback_issues, auto_tokenizer
         fallback_issues=json.dumps(fallback_issues, indent=2)
     )
 
-    task = f"Thinking about {pr['url']}: \"{pr['title'].replace("\"", "'")}\"…"
+    task = f"{i+1}/{total} thinking about {pr['url']}: \"{pr['title'].replace("\"", "'")}\"…"
     result = cache.cached_result(task, process_ai, task=task, prompt=prompt, auto_tokenizer_model=auto_tokenizer_model)
     try:
         if pr['url'] in result.keys():
@@ -287,7 +288,7 @@ def generate_mapping_for_pr(pr, relevant_issues, fallback_issues, auto_tokenizer
 
 
 def _process_ai_summary(jira_issue, i, jira_issues_len, related_issues, auto_tokenizer_model, cache):
-    print(f"{i}/{jira_issues_len}: Creating AI Summary for {jira_issue.get('key')}")
+    print(f"{i}/{jira_issues_len}: Creating AI Summary for {jira_issue.get('key')}", flush=True)
 
     ai_input = []
     # remove None values
@@ -337,7 +338,7 @@ def _process_ai_summary(jira_issue, i, jira_issues_len, related_issues, auto_tok
         jira_key=current_jira_issue['key']
     )
 
-    print(f"{i}/{jira_issues_len}: Taking parents in to account: {" ".join(parent_keys)}")
+    print(f"{i}/{jira_issues_len}: Taking parents in to account: {" ".join(parent_keys)}", flush=True)
 
     task = f"{i}/{jira_issues_len}: Thinking about {JIRA_HOST}/browse/{current_jira_issue['key']}: \"{current_jira_issue['summary']}\"…"
     result = cache.cached_result(task, process_ai, task=task, prompt=prompt, auto_tokenizer_model=auto_tokenizer_model, expect_json=False)
@@ -382,61 +383,92 @@ def create_ai_summary(jira_issues, related_issues, auto_tokenizer_model, cache, 
 
     return jira_issues_revised
 
+def _process_pr(i, total, pr, related_issues, jira_index, top_k, threshold, embedding_model, fallback_issues, auto_tokenizer_model, cache):
+    # act as if referenced issues in the PR are part of the description for context
+    description = pr.get("description", "")
+    if description is None:
+        description = ""
+    description = description.replace("\"", "'")
+    for k in related_issues.keys():
+        if pr['url'] in k:
+            description += related_issues[k]['summary'].replace("\"", "'")
+            description += related_issues[k]['description'].replace("\"", "'")
+    pr['description'] = description
+    data = f"{pr['url']} {pr['title']} {pr['description']}"
+    relevant = retrieve_relevant_issues(data, jira_index, pr, top_k=top_k, threshold=threshold, embedding_model=embedding_model)
 
-def map_prs_to_jira_rag(prs, jira_issues, jira_issues_revised, related_issues, fallback_issues, auto_tokenizer_model, top_k, threshold, cache, embedding_model):
+    # patch in defaults
+    fallback_issue_data = []
+    for fallback_issue in fallback_issues:
+        fallback_issue_data.append({
+            'key': related_issues[fallback_issue]['key'],
+            'summary': related_issues[fallback_issue]['summary'],
+            'description': related_issues[fallback_issue]['description'],
+            'similarity': float(1)
+        })
+
+    if not relevant:
+        ret = {"error": "No good match found for this pull request."}
+    else:
+        mapping = generate_mapping_for_pr(i, total, pr, relevant, fallback_issue_data, auto_tokenizer_model=auto_tokenizer_model, cache=cache)
+        try:
+            new_mapping = {}
+            for key in mapping:
+                for entry in relevant:
+                    if key == entry['key']:
+                        new_mapping[key] = {
+                            "key": key,
+                            "similarity": entry['similarity'],
+                        }
+                if key not in new_mapping:
+                    new_mapping[key] = {
+                        "key": key,
+                        "similarity": None
+                    }
+                new_mapping[key]["url"] = f"{JIRA_HOST}/browse/{key}"
+            new_mapping['considered'] = [{'key': v['key'], 'similarity': v['similarity'], 'url': f"{JIRA_HOST}/browse/{v['key']}"} for v in relevant]
+            ret = new_mapping
+        except:
+            ret = mapping
+    ret["key"] =  pr['url']
+    return ret
+
+
+def map_prs_to_jira_rag(prs, jira_issues, jira_issues_revised, related_issues, fallback_issues, auto_tokenizer_model, top_k, threshold, cache, embedding_model, threads):
     """
     For each pull request, retrieve the most similar Jira issues using embeddings,
     then generate a mapping via the LLM.
     """
     jira_index = build_jira_index(jira_issues, jira_issues_revised, embedding_model)
     final_mapping = {}
-    for pr in prs:
-        # act as if referenced issues in the PR are part of the description for context
-        description = pr.get("description", "")
-        if description is None:
-            description = ""
-        description = description.replace("\"", "'")
-        for k in related_issues.keys():
-            if pr['url'] in k:
-                description += related_issues[k]['summary'].replace("\"", "'")
-                description += related_issues[k]['description'].replace("\"", "'")
-        pr['description'] = description
-        data = f"{pr['url']} {pr['title']} {pr['description']}"
-        relevant = retrieve_relevant_issues(data, jira_index, pr, top_k=top_k, threshold=threshold, embedding_model=embedding_model)
 
-        # patch in defaults
-        fallback_issue_data = []
-        for fallback_issue in fallback_issues:
-            fallback_issue_data.append({
-                'key': related_issues[fallback_issue]['key'],
-                'summary': related_issues[fallback_issue]['summary'],
-                'description': related_issues[fallback_issue]['description'],
-                'similarity': float(1)
-            })
-
-        if not relevant:
-            final_mapping[pr['url']] = "No good match found for this pull request."
-        else:
-            mapping = generate_mapping_for_pr(pr, relevant, fallback_issue_data, auto_tokenizer_model=auto_tokenizer_model, cache=cache)
+    stop_event = threading.Event()
+    if threads > 1:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
+            tasks = []
+            i = 1
+            for pr in prs:
+                tasks.append(executor.submit(_process_pr, i, len(prs), pr, related_issues, jira_index, top_k, threshold, embedding_model, fallback_issues, auto_tokenizer_model, cache))
+                i += 1
             try:
-                new_mapping = {}
-                for key in mapping:
-                    for entry in relevant:
-                        if key == entry['key']:
-                            new_mapping[key] = {
-                                "key": key,
-                                "similarity": entry['similarity'],
-                            }
-                    if key not in new_mapping:
-                        new_mapping[key] = {
-                            "key": key,
-                            "similarity": None
-                        }
-                    new_mapping[key]["url"] = f"{JIRA_HOST}/browse/{key}"
-                new_mapping['considered'] = [{'key': v['key'], 'similarity': v['similarity'], 'url': f"{JIRA_HOST}/browse/{v['key']}"} for v in relevant]
-                final_mapping[pr['url']] = new_mapping
-            except:
-                final_mapping[pr['url']] = mapping
+                for task in concurrent.futures.as_completed(tasks):
+                    try:
+                        result = task.result()
+                        final_mapping[result["key"]] = task.result()
+                    except Exception as e:
+                        print(f"Error processing {pr['url']}: {e}")
+            except KeyboardInterrupt:
+                print("KeyboardInterrupt received, cancelling tasks...")
+                for task in tasks:
+                    task.cancel()
+                executor.shutdown(wait=False)
+                stop_event.set()
+                raise
+    else:
+        i = 1
+        for pr in prs:
+            final_mapping[pr['url']] = _process_pr(i, len(prs), pr, related_issues, jira_index, top_k, threshold, embedding_model, fallback_issues, auto_tokenizer_model, cache)
+            i += 1
     return final_mapping
 
 def get_suggestions(json_input_file, rag_top_k, rag_threshold, threads):
@@ -514,7 +546,7 @@ def get_suggestions(json_input_file, rag_top_k, rag_threshold, threads):
     with open(jira_ai_summary_path, "w") as f:
         json.dump(jira_issues_revised, f, indent=2)
 
-    mapping_result = map_prs_to_jira_rag(pull_requests, jira_issues, jira_issues_revised, related_issues, fallback_issues, auto_tokenizer_model=AUTO_TOKENIZER_MODEL, top_k=rag_top_k, threshold=rag_threshold, cache=cache, embedding_model=embedding_model)
+    mapping_result = map_prs_to_jira_rag(pull_requests, jira_issues, jira_issues_revised, related_issues, fallback_issues, AUTO_TOKENIZER_MODEL, rag_top_k, rag_threshold, cache, embedding_model, threads)
     debug_print("Final Mapping Result:")
     # print(json.dumps(mapping_result, indent=2))
     prefix = f"{JIRA_HOST}/browse/"
@@ -575,7 +607,7 @@ if __name__ == "__main__":
 
     print(f"\nFinal Mapping Result (saved to `{args.output}`):")
 
-    show_condensed = {k: v['match'] for k, v in result.items() }
+    show_condensed = {k: [ { "key": m['key'], "url": m['url']} for m in v['match']] for k, v in result.items() }
     print(json.dumps(show_condensed, indent=2))
 
     with open(args.output, "w") as f:
