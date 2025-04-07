@@ -2,6 +2,7 @@ jira
 requests
 requests_cache
 numpy
+ghapi
 sentence_transformers
 langchain_community
 truststore
@@ -10,3 +11,5 @@ openai
 tiktoken
 # maybe not needed
 pip-system-certs
+# for nomic-embed-text-v1 embedding
+# einops

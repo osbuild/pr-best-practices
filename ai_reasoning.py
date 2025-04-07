@@ -43,6 +43,11 @@ OLLAMA_API_GENERATE = os.getenv("OLLAMA_API_GENERATE", f"{OLLAMA_HOST}/api/gener
 OLLAMA_API_MODELS = os.getenv("OLLAMA_API_MODELS", f"{OLLAMA_HOST}/api/tags")
 OLLAMA_API_SHOW = os.getenv("OLLAMA_API_SHOW", f"{OLLAMA_HOST}/api/show")
 
+doc_epilog += """Also, you might want to set the environment variable `OLLAMA_MODEL` to something you have
+downloaded in ollama.  
+"""
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "granite3.2:8b")
+
 doc_epilog += """Alternatively you can also use vLLM via OpenAI API with `MODEL_API`, `MODEL_ID`
 and `USER_KEY`.  
 """
@@ -50,17 +55,19 @@ MODEL_API = os.getenv("MODEL_API")
 MODEL_ID = os.getenv("MODEL_ID", "/data/granite-3.2-8b-instruct")
 USER_KEY = os.getenv("USER_KEY")
 
-doc_epilog += """Also, you might want to set the environment variable `OLLAMA_MODEL` to something you have
-downloaded in ollama.  
-"""
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "granite3.2:8b")
-
 doc_epilog += "The environment variable `AI_REASONING_DEBUG` can be used to enable debug/verbose output.  \n"
 DEBUG = bool(os.getenv("AI_REASONING_DEBUG", False))
 LOG_FILE=""
 
+# notes:
+# all-MiniLM-L6-v2
+
 SCENTENCE_TRANSFORMER_MODEL = "all-MiniLM-L6-v2"
 doc_epilog += f"The transformer model for RAG is hardcoded in the script to `{SCENTENCE_TRANSFORMER_MODEL}`"
+
+doc_epilog += """Some models have remote code as part of the model. To be on the safe side you have to explicitly
+enable `AI_REASONING_TRUST_REMOTE_CODE`."""
+TRUST_REMOTE_CODE = bool(os.getenv("AI_REASONING_TRUST_REMOTE_CODE", False))
 
 PROMPT_MAP_PR ="""You are an expert at mapping a GitHub pull request to Jira issues based on their descriptions, title and summary.
 
@@ -122,11 +129,25 @@ def debug_print(*args, **kwargs):
 
 def compute_embeddings(text_list, embedding_model):
     """Compute embeddings for a list of texts."""
-    return embedding_model.encode(text_list, convert_to_tensor=False)
+    tokenizer = embedding_model.tokenizer
+    max_length = tokenizer.model_max_length
+
+    for text in text_list:
+        # Tokenize to count tokens
+        tokens = tokenizer.encode(text, add_special_tokens=True)
+        
+        if len(tokens) > max_length:
+            print(f"Checking embedding size of {text.split('\n')[0]}")
+            print(f"⚠️ Input too long: {len(tokens)} tokens (max {max_length}). Matching will be bad.")
+            # Truncate token list to max length
+    print(f"Calculate embeddings of all {len(text_list)} entries.")
+    ret = embedding_model.encode(text_list, convert_to_tensor=False)
+    print(f"done")
+    return ret
 
 def build_jira_index(jira_issues, jira_issues_revised, embedding_model):
     """Build an index for Jira issues with their embeddings."""
-    texts = [f"{issue.get('summary', "")}.\n{issue.get('description', "")}\n{jira_issues_revised.get(issue['key'], {'key': 'None'}).get('ai_description', "")}" for issue in jira_issues]
+    texts = [f"{issue['key']}: {issue.get('summary', "")}.\n{issue.get('description', "")}\n{jira_issues_revised.get(issue['key'], {'key': 'None'}).get('ai_description', "")}" for issue in jira_issues]
 
     embeddings = compute_embeddings(texts, embedding_model)
     index = []
@@ -484,7 +505,7 @@ def get_suggestions(json_input_file, rag_top_k, rag_threshold, threads):
 
     print("Initializing Sentence Transformer…")
     # Initialize the embedding model (ensure you have the required package installed)
-    embedding_model = SentenceTransformer(SCENTENCE_TRANSFORMER_MODEL)
+    embedding_model = SentenceTransformer(SCENTENCE_TRANSFORMER_MODEL, trust_remote_code=TRUST_REMOTE_CODE)
 
     if os.getenv("PR_BEST_PRACTICES_TEST_CACHE"):
         print("Loading cache…")
@@ -553,6 +574,7 @@ def get_suggestions(json_input_file, rag_top_k, rag_threshold, threads):
     # print(json.dumps(mapping_result, indent=2))
     prefix = f"{JIRA_HOST}/browse/"
 
+
     ret = {}
     for pr, pr_data in mapping_result.items():
         ret[pr] = {}
@@ -610,7 +632,7 @@ if __name__ == "__main__":
     print(f"\nFinal Mapping Result (saved to `{args.output}`):")
 
     show_condensed = {
-        k: [ { "key": m['key'], "url": m['url']} for m in v['match']]
+        k: [ { "key": m['key'], "summary": m['summary'], "url": m['url']} for m in v['match']]
         for k, v in result.items() 
     }
     print(json.dumps(show_condensed, indent=2))

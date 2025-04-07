@@ -1,3 +1,4 @@
+Loading cache…
 # Usage
 ```
        get_pull_requests.py [-h] --github-token GITHUB_TOKEN

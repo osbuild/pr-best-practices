@@ -2,13 +2,14 @@
 ```
        ai_reasoning.py [-h] [--input INPUT] [--rag_top_k RAG_TOP_K]
                        [--rag_threshold RAG_THRESHOLD] [--log LOG]
-                       [--output OUTPUT] [--help-md]
+                       [--output OUTPUT] [--threads THREADS] [--help-md]
 ```
 This script uses AI to summarize the Epics (with the context of their issue-
 parents) then uses sentence transformers (RAG) to find the most similar issues
 to the list of PRs. Finally uses AI to figure out which of the issues match
 the PR the most. It expects `get_pull_requests.py` to be run before and
-generate `data_collection.json`.
+generate `data_collection.json`. TBD: rewrite with langchain (e.g. using
+GitHub document loader directly?)
 
 # Options
 ```
@@ -25,14 +26,18 @@ generate `data_collection.json`.
   --log LOG             Create a logfile with debug messages (default: )
   --output OUTPUT       Output JSON file containing the mapping result
                         (default: rag_mapping_result.json)
+  --threads THREADS     Number of threads to run AI in parallel (default: 1)
   --help-md             Show help as Markdown (default: False)
 ```
 You can override the URL to Jira by setting the environment variable
 `JIRA_HOST`. If you have ollama running on another host (with a decent GPU),
 you might want to set the environment variable `OLLAMA_HOST` to something like
 `http://other_host:11434`. Also, you might want to set the environment
-variable `OLLAMA_MODEL` to something you have downloaded in ollama. The
-environment variable `AI_REASONING_DEBUG` can be used to enable debug/verbose
-output. The transformer model for RAG is hardcoded in the script to `all-
-MiniLM-L6-v2`
+variable `OLLAMA_MODEL` to something you have downloaded in ollama.
+Alternatively you can also use vLLM via OpenAI API with `MODEL_API`,
+`MODEL_ID` and `USER_KEY`. The environment variable `AI_REASONING_DEBUG` can
+be used to enable debug/verbose output. The transformer model for RAG is
+hardcoded in the script to `nomic-ai/nomic-embed-text-v1`Some models have
+remote code as part of the model. To be on the safe side you have to
+explicitly enable `AI_REASONING_TRUST_REMOTE_CODE`.
 
