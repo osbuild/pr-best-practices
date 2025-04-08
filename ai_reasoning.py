@@ -235,13 +235,12 @@ def retrieve_relevant_issues(pr_description, jira_index, pr, top_k, threshold, e
     for issue in jira_index:
         issue_embeddings = issue['embedding']
         # each issue first get's a list of similarities for all pr_chunks
-        issue_sims = []
-        for pr_embedding_chunk in pr_embeddings:
-            pr_embedding = np.array(pr_embedding_chunk).reshape(1, -1)
-            issue_sims.append(cosine_similarity(pr_embedding, issue_embeddings)[0])
+        aggregated_issue_embedding = np.mean(np.stack(issue_embeddings), axis=0).reshape(1,-1)
+        aggregated_pr_embedding = np.mean(np.stack(pr_embeddings), axis=0).reshape(1,-1)
+        issue_sim = cosine_similarity(aggregated_pr_embedding, aggregated_issue_embedding)[0]
         # for now we take the mean of all similarities between
         # one issue and all pr_chunks
-        sims = np.append(sims, np.mean(issue_sims))
+        sims = np.append(sims, issue_sim)
     top_indices = sims.argsort()[-top_k:][::-1]
     
     relevant = []
