@@ -92,8 +92,21 @@ def get_pull_request_details(github_api, repo, pull_request):
             break
     else:
         print(f"Tried {attempt} times to get details for {pull_request.html_url}. Skipping.")
+    
+    commits = []
+    for attempt in range(3):
+        try:
+            commits = github_api.pulls.list_commits(repo=repo, pull_number=pull_request["number"])
+        except:  # pylint: disable=bare-except
+            time.sleep(2)  # avoid API blocking
+        else:
+            break
+    else:
+        print(f"Tried {attempt} times to get commits for {pull_request.html_url}. Skipping.")
 
     if pull_request_details is not None:
+        # without the general details, it would not make sense to return the commit messages
+        pull_request_details["commit_messages"] = [c.commit.message for c in commits]
         return pull_request_details
 
     print("Couldn't get any pull requests details.")
@@ -127,6 +140,7 @@ def get_pull_request_properties(github_api, pull_request, org, repo):
     #pr_properties["approved"] = get_review_state(github_api, repo, pull_request, "APPROVED")
     #pr_properties["status"], pr_properties["state"] = get_commit_status(github_api, repo, pull_request_details)#
     pr_properties["description"] = pull_request.body
+    pr_properties["commit_messages"] = pull_request_details["commit_messages"]
 
     # TBD: when the PR contains a Jira key or other PR reference
     # this additional info should be fetched and fed to pr_properties/AI too.
@@ -400,7 +414,8 @@ def main():
         "pull_requests": [
             { 'url': item['html_url'],
               'title': item['title'],
-              'description': item['description']
+              'description': item['description'],
+              'commit_messages': item['commit_messages']
             }  for item in pull_request_list if not jira_pattern.search(item['title'])
         ],
         "jira_issues": [
@@ -429,7 +444,8 @@ def main():
         "pull_requests": [
             { 'url': item['html_url'],
               'title': item['title'],
-              'description': item['description']
+              'description': item['description'],
+              'commit_messages': item['commit_messages']
             }  for item in pull_request_list if jira_pattern.search(item['title'])
         ],
         "jira_issues": [

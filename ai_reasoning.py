@@ -70,12 +70,13 @@ doc_epilog += """Some models have remote code as part of the model. To be on the
 enable `AI_REASONING_TRUST_REMOTE_CODE`."""
 TRUST_REMOTE_CODE = bool(os.getenv("AI_REASONING_TRUST_REMOTE_CODE", False))
 
-PROMPT_MAP_PR ="""You are an expert at mapping a GitHub pull request to Jira issues based on their descriptions, title and summary.
+PROMPT_MAP_PR ="""You are an expert at mapping a GitHub pull request to Jira issues based on their descriptions, title, summary and commit messages.
 
 Pull Request:
 URL: "{pr_url}"
 Title: "{pr_title}"
 Description: "{pr_description}"
+Commit messages: "{pr_commit_messages}"
 
 Retrieved Jira Issues:
 {relevant_issues}
@@ -366,6 +367,7 @@ def generate_mapping_for_pr(i, total, pr, relevant_issues, fallback_issues, auto
         pr_url=pr['url'].replace("\"", "'"),
         pr_title=pr['title'].replace("\"", "'"),
         pr_description=pr['description'].replace("\"", "'"),
+        pr_commit_messages=[m.replace("\"", "'") for m in pr['commit_messages']],
         relevant_issues=json.dumps(relevant_issues, indent=2),
         fallback_issues=json.dumps(fallback_issues, indent=2)
     )
@@ -492,7 +494,7 @@ def _process_pr(i, total, pr, related_issues, jira_index, top_k, threshold, embe
             description += related_issues[k]['summary'].replace("\"", "'")
             description += related_issues[k]['description'].replace("\"", "'")
     pr['description'] = description
-    data = f"{pr['url']} {pr['title']} {pr['description']}"
+    data = f"{pr['url']} {pr['title']} {pr['description']} {pr['commit_messages']}"
     relevant = retrieve_relevant_issues(data, jira_index, pr, top_k=top_k, threshold=threshold, embedding_model=embedding_model)
 
     # patch in defaults
