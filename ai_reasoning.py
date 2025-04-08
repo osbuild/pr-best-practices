@@ -11,6 +11,7 @@ TBD: rewrite with langchain (e.g. using GitHub document loader directly?)
 
 import argparse
 import threading
+import openai
 import requests
 import json
 import numpy as np
@@ -148,6 +149,7 @@ def staged_chunking(embedding_model, tokenizer, max_length, stages, text):
     """calculates embeddings for as large chunks as valid
     for the used tokenizer. If one single chunk is too large
     the next function in stages is used to chunk even smaller."""
+    global embedding_model_lock
     text_embedding = []
     splitter = stages[0]
     sentences = splitter(text)
@@ -155,14 +157,12 @@ def staged_chunking(embedding_model, tokenizer, max_length, stages, text):
     current_chunk = []
     for s in sentences:
         from transformers import logging as transformers_logging
-
-        # Temporarily set level to ERROR to avoid excessive output
-        original_verbosity = transformers_logging.get_verbosity()
-        transformers_logging.set_verbosity_error()
-        #warnings.filterwarnings("ignore", message="Token indices sequence length is longer than")
-
-        tokens = tokenizer.encode(s, add_special_tokens=True)
-        transformers_logging.set_verbosity(original_verbosity)
+        with embedding_model_lock:
+            # Temporarily set level to ERROR to avoid excessive output
+            original_verbosity = transformers_logging.get_verbosity()
+            transformers_logging.set_verbosity_error()
+            tokens = tokenizer.encode(s, add_special_tokens=True)
+            transformers_logging.set_verbosity(original_verbosity)
 
         # would be already too much for the embeddings model
         # so let's get embedding without this sentence
@@ -171,7 +171,9 @@ def staged_chunking(embedding_model, tokenizer, max_length, stages, text):
             # embedding of it, dropping some information at the end
             # (should not happen too often)
             if len(current_chunk) > 0:
-                text_embedding.append(embedding_model.encode(" ".join(current_chunk), convert_to_tensor=False))
+                with embedding_model_lock:
+                    text_embedding.append(embedding_model.encode(" ".join(current_chunk), convert_to_tensor=False))
+
                 current_chunk = []
                 token_sum = 0
 
@@ -184,8 +186,8 @@ def staged_chunking(embedding_model, tokenizer, max_length, stages, text):
             print(s)
         current_chunk.append(s)
         token_sum += len(tokens)
-
-    text_embedding.append(embedding_model.encode(" ".join(current_chunk), convert_to_tensor=False))
+    with embedding_model_lock:
+        text_embedding.append(embedding_model.encode(" ".join(current_chunk), convert_to_tensor=False))
     return text_embedding
 
 
@@ -368,7 +370,7 @@ def generate_mapping_for_pr(i, total, pr, relevant_issues, fallback_issues, auto
         fallback_issues=json.dumps(fallback_issues, indent=2)
     )
 
-    task = f"{i}/{total} thinking about {pr['url']}: \"{pr['title'].replace("\"", "'")}\"…"
+    task = f"{i}/{total} Thinking about {pr['url']}: \"{pr['title'].replace("\"", "'")}\"…"
     result = cache.cached_result(task, process_ai, task=task, prompt=prompt, auto_tokenizer_model=auto_tokenizer_model)
     try:
         if pr['url'] in result.keys():
@@ -432,7 +434,7 @@ def _process_ai_summary(jira_issue, i, jira_issues_len, related_issues, auto_tok
         jira_key=current_jira_issue['key']
     )
 
-    print(f"{i}/{jira_issues_len}: Taking parents in to account: {" ".join(parent_keys)}", flush=True)
+    debug_print(f"{i}/{jira_issues_len}: Taking parents in to account: {" ".join(parent_keys)}", flush=True)
 
     task = f"{i}/{jira_issues_len}: Thinking about {JIRA_HOST}/browse/{current_jira_issue['key']}: \"{current_jira_issue['summary']}\"…"
     result = cache.cached_result(task, process_ai, task=task, prompt=prompt, auto_tokenizer_model=auto_tokenizer_model, expect_json=False)
@@ -533,7 +535,7 @@ def _process_pr(i, total, pr, related_issues, jira_index, top_k, threshold, embe
             ret = new_mapping
         except:
             ret = mapping
-    ret["key"] =  pr['url']
+    ret["key"] = pr['url']
     return ret
 
 
@@ -560,7 +562,7 @@ def map_prs_to_jira_rag(prs, jira_issues, jira_issues_revised, related_issues, f
                     try:
                         final_mapping[pr["url"]] = task.result()
                     except Exception as e:
-                        print(f"Error processing {pr['url']}: {e}")
+                        print(f"Error processing {pr['url']} {type(e).__name__}: {e}")
             except KeyboardInterrupt:
                 print("KeyboardInterrupt received, cancelling tasks...")
                 for task in tasks:
@@ -587,6 +589,9 @@ def get_suggestions(json_input_file, rag_top_k, rag_threshold, threads):
     print("Initializing Sentence Transformer…")
     # Initialize the embedding model (ensure you have the required package installed)
     embedding_model = SentenceTransformer(SCENTENCE_TRANSFORMER_MODEL, trust_remote_code=TRUST_REMOTE_CODE)
+    # local SentenceTransformer does not seem to be threadsafe
+    global embedding_model_lock
+    embedding_model_lock = threading.Lock()
 
     if os.getenv("PR_BEST_PRACTICES_TEST_CACHE"):
         print("Loading cache…")
@@ -681,7 +686,7 @@ def get_suggestions(json_input_file, rag_top_k, rag_threshold, threads):
                     debug_print(f" {" " * len(prefix)}{"^"* len(issue_found)} HALLUCINATION")
                 else:
                     ret[pr]['match'].append(issue_data)
-        ret[pr]['considered'] = pr_data['considered']
+        ret[pr]['considered'] = pr_data.get('considered',[])
     return ret
 
 if __name__ == "__main__":
