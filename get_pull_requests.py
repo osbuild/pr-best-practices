@@ -347,6 +347,8 @@ def main():
                         print(f"Skip getting JIRA issue {k}: {e.text}")
                         continue
                     raise e
+    # drop duplicates again
+    unique_sorted_epics = sorted(set([e for e in unique_sorted_epics]), key=lambda x: x.key)
 
     print(f"All open Epics: {len(unique_sorted_epics)}")
     for i in unique_sorted_epics:
