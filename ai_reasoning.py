@@ -184,7 +184,7 @@ def staged_chunking(embedding_model, tokenizer, max_length, stages, text):
                 text_embedding.extend(staged_chunking(embedding_model, tokenizer, max_length, stages[1:], s))
                 continue
             print(f"⚠️ Input too long: {len(tokens)} tokens (max {max_length}). Matching will be bad.")
-            print(s)
+            debug_print(s)
         current_chunk.append(s)
         token_sum += len(tokens)
     with embedding_model_lock:
