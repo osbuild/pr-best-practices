@@ -10,13 +10,13 @@ TBD: rewrite with langchain (e.g. using GitHub document loader directly?)
 """
 
 import argparse
-import signal
 import threading
 import requests
 import json
 import numpy as np
 import os
 import sys
+import nltk
 
 import concurrent.futures
 
@@ -127,28 +127,92 @@ def debug_print(*args, **kwargs):
             f.write(*args)
             f.write(str(kwargs.get('end', '\n')))
 
+
+def split_into_sentences(text):
+    """Split text into sentences using NLTK."""
+    global sent_detector
+    return sent_detector.tokenize(text)
+
+
+def split_into_paragraphs(text):
+    """Split text into paragraphs based on double newline characters."""
+    return text.split('\n\n')
+
+
+def split_into_lines(text):
+    """Split text into lines based on single newline characters."""
+    return text.split('\n')
+
+
+def staged_chunking(embedding_model, tokenizer, max_length, stages, text):
+    """calculates embeddings for as large chunks as valid
+    for the used tokenizer. If one single chunk is too large
+    the next function in stages is used to chunk even smaller."""
+    text_embedding = []
+    splitter = stages[0]
+    sentences = splitter(text)
+    token_sum = 0
+    current_chunk = []
+    for s in sentences:
+        from transformers import logging as transformers_logging
+
+        # Temporarily set level to ERROR to avoid excessive output
+        original_verbosity = transformers_logging.get_verbosity()
+        transformers_logging.set_verbosity_error()
+        #warnings.filterwarnings("ignore", message="Token indices sequence length is longer than")
+
+        tokens = tokenizer.encode(s, add_special_tokens=True)
+        transformers_logging.set_verbosity(original_verbosity)
+
+        # would be already too much for the embeddings model
+        # so let's get embedding without this sentence
+        if token_sum + len(tokens) >= max_length: 
+            # if even one sentence is too large, we just get the
+            # embedding of it, dropping some information at the end
+            # (should not happen too often)
+            if len(current_chunk) > 0:
+                text_embedding.append(embedding_model.encode(" ".join(current_chunk), convert_to_tensor=False))
+                current_chunk = []
+                token_sum = 0
+
+        if len(tokens) >= max_length:
+            if len(stages) > 1:
+                # use another stage to split even more
+                text_embedding.extend(staged_chunking(embedding_model, tokenizer, max_length, stages[1:], s))
+                continue
+            print(f"⚠️ Input too long: {len(tokens)} tokens (max {max_length}). Matching will be bad.")
+            print(s)
+        current_chunk.append(s)
+        token_sum += len(tokens)
+
+    text_embedding.append(embedding_model.encode(" ".join(current_chunk), convert_to_tensor=False))
+    return text_embedding
+
+
 def compute_embeddings(text_list, embedding_model):
-    """Compute embeddings for a list of texts."""
+    """Compute embeddings for a list of texts.
+    This returns an array of embeddings for each text_list,
+    as each text in text_list might be longer than model_max_length
+    """
     tokenizer = embedding_model.tokenizer
     max_length = tokenizer.model_max_length
-
+    ret = []
+    stages = [split_into_sentences, split_into_paragraphs, split_into_lines]
+    i = 1
     for text in text_list:
-        # Tokenize to count tokens
-        tokens = tokenizer.encode(text, add_special_tokens=True)
-        
-        if len(tokens) > max_length:
-            print(f"Checking embedding size of {text.split('\n')[0]}")
-            print(f"⚠️ Input too long: {len(tokens)} tokens (max {max_length}). Matching will be bad.")
-            # Truncate token list to max length
-    print(f"Calculate embeddings of all {len(text_list)} entries.")
-    ret = embedding_model.encode(text_list, convert_to_tensor=False)
-    print(f"done")
+        if len(text_list) > 1:
+            print(f"Calculate embeddings {i}/{len(text_list)}")
+            i += 1
+        # create array of embeddings for each text
+        text_embedding = staged_chunking(embedding_model, tokenizer, max_length, stages, text)
+        ret.append(text_embedding)
     return ret
+
 
 def build_jira_index(jira_issues, jira_issues_revised, embedding_model):
     """Build an index for Jira issues with their embeddings."""
     texts = [f"{issue['key']}: {issue.get('summary', "")}.\n{issue.get('description', "")}\n{jira_issues_revised.get(issue['key'], {'key': 'None'}).get('ai_description', "")}" for issue in jira_issues]
-
+    print("Building jira embeddings index")
     embeddings = compute_embeddings(texts, embedding_model)
     index = []
     for idx, issue in enumerate(jira_issues):
@@ -162,10 +226,19 @@ def build_jira_index(jira_issues, jira_issues_revised, embedding_model):
 
 def retrieve_relevant_issues(pr_description, jira_index, pr, top_k, threshold, embedding_model):
     """Retrieve the top_k most similar Jira issues above a similarity threshold."""
-    pr_embedding = compute_embeddings([pr_description], embedding_model)[0]
-    embeddings = np.array([item['embedding'] for item in jira_index])
-    pr_embedding = np.array(pr_embedding).reshape(1, -1)
-    sims = cosine_similarity(pr_embedding, embeddings)[0]
+    pr_embeddings = compute_embeddings([pr_description], embedding_model)[0]
+
+    sims = np.array([], dtype=int)
+    for issue in jira_index:
+        issue_embeddings = issue['embedding']
+        # each issue first get's a list of similarities for all pr_chunks
+        issue_sims = []
+        for pr_embedding_chunk in pr_embeddings:
+            pr_embedding = np.array(pr_embedding_chunk).reshape(1, -1)
+            issue_sims.append(cosine_similarity(pr_embedding, issue_embeddings)[0])
+        # for now we take the mean of all similarities between
+        # one issue and all pr_chunks
+        sims = np.append(sims, np.mean(issue_sims))
     top_indices = sims.argsort()[-top_k:][::-1]
     
     relevant = []
@@ -407,6 +480,7 @@ def create_ai_summary(jira_issues, related_issues, auto_tokenizer_model, cache, 
 
 def _process_pr(i, total, pr, related_issues, jira_index, top_k, threshold, embedding_model, fallback_issues, auto_tokenizer_model, cache):
     # act as if referenced issues in the PR are part of the description for context
+    print(f"Processing PR {i}/{total}")
     description = pr.get("description", "")
     if description is None:
         description = ""
@@ -440,15 +514,22 @@ def _process_pr(i, total, pr, related_issues, jira_index, top_k, threshold, embe
                     if key == entry['key']:
                         new_mapping[key] = {
                             "key": key,
+                            "summary": entry['summary'],
                             "similarity": entry['similarity'],
                         }
                 if key not in new_mapping:
                     new_mapping[key] = {
                         "key": key,
+                        "summary": entry['summary'],
                         "similarity": None
                     }
                 new_mapping[key]["url"] = f"{JIRA_HOST}/browse/{key}"
-            new_mapping['considered'] = [{'key': v['key'], 'similarity': v['similarity'], 'url': f"{JIRA_HOST}/browse/{v['key']}"} for v in relevant]
+            new_mapping['considered'] = [
+                {'key': v['key'],
+                 'summary': v['summary'],
+                 'similarity': v['similarity'],
+                 'url': f"{JIRA_HOST}/browse/{v['key']}"}
+                 for v in relevant]
             ret = new_mapping
         except:
             ret = mapping
@@ -524,6 +605,11 @@ def get_suggestions(json_input_file, rag_top_k, rag_threshold, threads):
     related_issues = data['related_issues']
     fallback_issues = data['fallback_issues']
 
+    print("Downloading Punkt tokenizer")
+    nltk.download('punkt_tab')
+    global sent_detector
+    sent_detector = nltk.tokenize.PunktTokenizer()
+
     if OLLAMA_HOST:
         print(f"Getting available models from Ollama API on {OLLAMA_HOST}...")
         response = requests.get(OLLAMA_API_MODELS, timeout=60)
@@ -566,6 +652,7 @@ def get_suggestions(json_input_file, rag_top_k, rag_threshold, threads):
     jira_issues_revised = create_ai_summary(jira_issues, related_issues, AUTO_TOKENIZER_MODEL, cache, threads)
     
     jira_ai_summary_path = "01_jira_ai_summary.json"
+    print(f"Saving intermediate step to {jira_ai_summary_path}")
     with open(jira_ai_summary_path, "w") as f:
         json.dump(jira_issues_revised, f, indent=2)
 

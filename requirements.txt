@@ -7,6 +7,8 @@ sentence_transformers
 langchain_community
 truststore
 openai
+transformers
+nltk
 # maybe needed for streaming
 tiktoken
 # maybe not needed
