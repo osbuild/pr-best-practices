@@ -258,34 +258,53 @@ def retrieve_relevant_issues(pr_description, jira_index, pr, top_k, threshold, e
     return relevant
 
 
-def cleanup_json_response(result):
+def cleanup_json_response(result, read_reverse=False):
     """cleanup_json_response
     * support for deepseek - filter out the <think>...</think> content
     * sometimes the output is in a markdown code block, so filter that out too
     * some AI answers include an introductory text, so we filter that out too
     * if there are newlines - we'll remove them. They usually destroy the json syntax and are not relevant
     * once we have a '{' we start reading, as soon as all braces are closed again we break, avoiding trailing text
+    read_reverse tries to read from the end of the message
     """
     real_result = ""
     output = True
     ignore_heading_text = True
     braces = 0
-    for line in result.split("\n"):
-        if "<think>" in line:
+    lines = result.split("\n")
+
+    think_begin = "<think>"
+    think_end = "</think>"
+    start_json_symbol = "{"
+    end_json_symbol = "}"
+
+    if read_reverse:
+        lines = reversed(lines)
+        think_begin = "</think>"
+        think_end = "<think>"
+        start_json_symbol = "}"
+        end_json_symbol = "{"
+
+    for line in lines:
+        if think_begin in line:
             output = False
             continue
-        if "</think>" in line:
+        if think_end in line:
             output = True
             continue
         if line in ["```", "```json"]:
             continue
-        if '{' not in line and ignore_heading_text:
+        if start_json_symbol not in line and ignore_heading_text:
             continue
-        braces += line.count('{')
-        braces -= line.count('}')
+        braces += line.count(start_json_symbol)
+        braces -= line.count(end_json_symbol)
         ignore_heading_text = False
         if output:
-            real_result += line.replace("\n", " ").replace("\r", " ")
+            line_cleaned = line.replace("\n", " ").replace("\r", " ")
+            if read_reverse:
+                real_result = line_cleaned + real_result
+            else:
+                real_result += line_cleaned
         if braces <= 0:
             break
     return real_result
@@ -348,13 +367,18 @@ def process_ai(task, prompt, auto_tokenizer_model, expect_json=True):
             result += line
 
     if expect_json:
+        # first try finding a json at the end of the message
         try:
-            real_result = cleanup_json_response(result)
+            real_result = cleanup_json_response(result, read_reverse=True)
             ret = json.loads(real_result)
         except Exception as e:
-            print(f"{task} Error while decoding json: {e}")
-            print(result)
-            ret = {"error": str(e)}
+            try:
+                real_result = cleanup_json_response(result)
+                ret = json.loads(real_result)
+            except Exception as e:
+                print(f"{task} Error while decoding json: {e}")
+                print(result)
+                ret = {"error": str(e)}
     else:
         ret = result
 
