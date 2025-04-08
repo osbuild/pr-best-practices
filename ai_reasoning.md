@@ -37,7 +37,7 @@ variable `OLLAMA_MODEL` to something you have downloaded in ollama.
 Alternatively you can also use vLLM via OpenAI API with `MODEL_API`,
 `MODEL_ID` and `USER_KEY`. The environment variable `AI_REASONING_DEBUG` can
 be used to enable debug/verbose output. The transformer model for RAG is
-hardcoded in the script to `nomic-ai/nomic-embed-text-v1`Some models have
-remote code as part of the model. To be on the safe side you have to
-explicitly enable `AI_REASONING_TRUST_REMOTE_CODE`.
+hardcoded in the script to `all-MiniLM-L6-v2`. Some models have remote code as
+part of the model. To be on the safe side you have to explicitly enable
+`AI_REASONING_TRUST_REMOTE_CODE`.
 

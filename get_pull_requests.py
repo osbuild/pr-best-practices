@@ -53,19 +53,6 @@ JIRA_PARENT_LINK_FIELD = "customfield_12313140"
 JIRA_EPIC_LINK_FIELD_NAME = "Epic Link"
 JIRA_EPIC_LINK_FIELD = "customfield_12311140"
 
-if os.getenv("PR_BEST_PRACTICES_TEST_CACHE"):
-    print("Loading cache…")
-    import requests_cache
-    # NOTE: this will cache forever, until you remove the `test_cache.sqlite`
-    requests_cache.install_cache(
-        'test_cache',
-        backend='sqlite',
-        expire_after=None,
-    )
-    cache = Cache("test_cache.pkl")
-else:
-    cache = Cache(None) # indicates not to use cache
-
 def get_archived_repos(github_api, org):
     """
     Return a list of archived or disabled repositories
@@ -236,6 +223,7 @@ def get_parent(issue):
 
 def main():
     """Return a list of pull requests for a given organisation, repository and assignee"""
+    global cache
     parser = argparse.ArgumentParser(allow_abbrev=False,
         description=__doc__,
         epilog=doc_epilog
@@ -267,6 +255,19 @@ def main():
     # pylint: disable=global-statement
 
     github_api = GhApi(owner=args.org, token=args.github_token)
+
+    if os.getenv("PR_BEST_PRACTICES_TEST_CACHE"):
+        print("Loading cache…")
+        import requests_cache
+        # NOTE: this will cache forever, until you remove the `test_cache.sqlite`
+        requests_cache.install_cache(
+            'test_cache',
+            backend='sqlite',
+            expire_after=None,
+        )
+        cache = Cache("test_cache.pkl")
+    else:
+        cache = Cache(None) # indicates not to use cache
 
     print(f"Fetching pull requests for {args.org}/{args.repo} assigned to {args.author}")
 

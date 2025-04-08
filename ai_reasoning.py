@@ -63,7 +63,7 @@ LOG_FILE=""
 # all-MiniLM-L6-v2
 
 SCENTENCE_TRANSFORMER_MODEL = "all-MiniLM-L6-v2"
-doc_epilog += f"The transformer model for RAG is hardcoded in the script to `{SCENTENCE_TRANSFORMER_MODEL}`"
+doc_epilog += f"The transformer model for RAG is hardcoded in the script to `{SCENTENCE_TRANSFORMER_MODEL}`. "
 
 doc_epilog += """Some models have remote code as part of the model. To be on the safe side you have to explicitly
 enable `AI_REASONING_TRUST_REMOTE_CODE`."""
