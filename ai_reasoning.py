@@ -227,7 +227,7 @@ def build_jira_index(jira_issues, jira_issues_revised, embedding_model):
         })
     return index
 
-def retrieve_relevant_issues(pr_description, jira_index, pr, top_k, threshold, embedding_model):
+def sort_issues_by_relevance(pr_description, jira_index, pr, embedding_model):
     """Retrieve the top_k most similar Jira issues above a similarity threshold."""
     pr_embeddings = compute_embeddings([pr_description], embedding_model)[0]
 
@@ -241,21 +241,21 @@ def retrieve_relevant_issues(pr_description, jira_index, pr, top_k, threshold, e
         # for now we take the mean of all similarities between
         # one issue and all pr_chunks
         sims = np.append(sims, issue_sim)
-    top_indices = sims.argsort()[-top_k:][::-1]
+    # reverse order
+    top_indices = sims.argsort()[::-1]
     
-    relevant = []
+    relevance_sorted = []
     for idx in top_indices:
-        if sims[idx] >= threshold:
-            relevant.append({
-                'key': jira_index[idx]['key'],
-                'summary': jira_index[idx].get('summary',""),
-                'description': jira_index[idx].get('description',""),
-                'similarity': float(sims[idx])
-            })
+        relevance_sorted.append({
+            'key': jira_index[idx]['key'],
+            'summary': jira_index[idx].get('summary',""),
+            'description': jira_index[idx].get('description',""),
+            'similarity': float(sims[idx])
+        })
     pr_key = "_".join(pr['url'].split('/')[:-3])
     with open(f"02_similarity_{pr_key}.json", "w") as f:
-        json.dump(relevant, f, indent=2)
-    return relevant
+        json.dump(relevance_sorted, f, indent=2)
+    return relevance_sorted
 
 
 def cleanup_json_response(result, read_reverse=False):
@@ -385,13 +385,13 @@ def process_ai(task, prompt, auto_tokenizer_model, expect_json=True):
     return ret
 
 
-def generate_mapping_for_pr(i, total, pr, relevant_issues, fallback_issues, auto_tokenizer_model, cache):
+def generate_mapping_for_pr(i, total, pr, relevant_issues, top_k, threshold, fallback_issues, auto_tokenizer_model, cache):
     prompt = PROMPT_MAP_PR.format(
         pr_url=pr['url'].replace("\"", "'"),
         pr_title=pr['title'].replace("\"", "'"),
         pr_description=pr['description'].replace("\"", "'"),
         pr_commit_messages=[m.replace("\"", "'") for m in pr['commit_messages']],
-        relevant_issues=json.dumps(relevant_issues, indent=2),
+        relevant_issues=json.dumps(relevant_issues[:top_k], indent=2),
         fallback_issues=json.dumps(fallback_issues, indent=2)
     )
 
@@ -518,7 +518,7 @@ def _process_pr(i, total, pr, related_issues, jira_index, top_k, threshold, embe
             description += related_issues[k]['description'].replace("\"", "'")
     pr['description'] = description
     data = f"{pr['url']} {pr['title']} {pr['description']} {pr['commit_messages']}"
-    relevant = retrieve_relevant_issues(data, jira_index, pr, top_k=top_k, threshold=threshold, embedding_model=embedding_model)
+    relevant = sort_issues_by_relevance(data, jira_index, pr, embedding_model=embedding_model)
 
     # patch in defaults
     fallback_issue_data = []
@@ -533,7 +533,7 @@ def _process_pr(i, total, pr, related_issues, jira_index, top_k, threshold, embe
     if not relevant:
         ret = {"error": "No good match found for this pull request."}
     else:
-        mapping = generate_mapping_for_pr(i, total, pr, relevant, fallback_issue_data, auto_tokenizer_model=auto_tokenizer_model, cache=cache)
+        mapping = generate_mapping_for_pr(i, total, pr, relevant, top_k, threshold, fallback_issue_data, auto_tokenizer_model=auto_tokenizer_model, cache=cache)
         try:
             new_mapping = {}
             for key in mapping:
