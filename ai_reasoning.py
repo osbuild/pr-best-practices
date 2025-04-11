@@ -11,13 +11,14 @@ TBD: rewrite with langchain (e.g. using GitHub document loader directly?)
 
 import argparse
 import threading
-import openai
 import requests
 import json
+import nltk
 import numpy as np
 import os
 import sys
-import nltk
+import urllib.parse
+
 
 import concurrent.futures
 
@@ -129,6 +130,11 @@ def debug_print(*args, **kwargs):
             f.write(*args)
             f.write(str(kwargs.get('end', '\n')))
 
+def get_pr_handle(pr_url):
+    try:
+        return urllib.parse.urlparse(pr_url).path.replace("/","_")
+    except:
+        return pr_url.replace("http://","").replace("/","_").replace(":","")
 
 def split_into_sentences(text):
     """Split text into sentences using NLTK."""
@@ -250,10 +256,10 @@ def sort_issues_by_relevance(pr_description, jira_index, pr, embedding_model):
             'key': jira_index[idx]['key'],
             'summary': jira_index[idx].get('summary',""),
             'description': jira_index[idx].get('description',""),
+            'additional_info': jira_index[idx].get('ai_input',""),
             'similarity': float(sims[idx])
         })
-    pr_key = "_".join(pr['url'].split('/')[:-3])
-    with open(f"02_similarity_{pr_key}.json", "w") as f:
+    with open(f"02_similarity_{get_pr_handle(pr['url'])}.json", "w") as f:
         json.dump(relevance_sorted, f, indent=2)
     return relevance_sorted
 
@@ -310,7 +316,7 @@ def cleanup_json_response(result, read_reverse=False):
     return real_result
 
 
-def process_ai(task, prompt, auto_tokenizer_model, expect_json=True):
+def process_ai(task, prompt, auto_tokenizer_model):
     """
     For a given pull request and its retrieved Jira issues,
     generate a mapping using the LLM.
@@ -365,24 +371,7 @@ def process_ai(task, prompt, auto_tokenizer_model, expect_json=True):
                 return None
             debug_print(line, end="", flush=True)
             result += line
-
-    if expect_json:
-        # first try finding a json at the end of the message
-        try:
-            real_result = cleanup_json_response(result, read_reverse=True)
-            ret = json.loads(real_result)
-        except Exception as e:
-            try:
-                real_result = cleanup_json_response(result)
-                ret = json.loads(real_result)
-            except Exception as e:
-                print(f"{task} Error while decoding json: {e}")
-                print(result)
-                ret = {"error": str(e)}
-    else:
-        ret = result
-
-    return ret
+    return result
 
 
 def generate_mapping_for_pr(i, total, pr, relevant_issues, top_k, threshold, fallback_issues, auto_tokenizer_model, cache):
@@ -397,12 +386,29 @@ def generate_mapping_for_pr(i, total, pr, relevant_issues, top_k, threshold, fal
 
     task = f"{i}/{total} Thinking about {pr['url']}: \"{pr['title'].replace("\"", "'")}\"…"
     result = cache.cached_result(task, process_ai, task=task, prompt=prompt, auto_tokenizer_model=auto_tokenizer_model)
+    # first try finding a json at the end of the message
     try:
-        if pr['url'] in result.keys():
-            return result.get(pr['url'])
+        real_result = cleanup_json_response(result, read_reverse=True)
+        result_json = json.loads(real_result)
+    except Exception as e:
+        try:
+            real_result = cleanup_json_response(result)
+            result_json = json.loads(real_result)
+        except Exception as e:
+            print(f"{task} Error while decoding json: {e}")
+            print(result)
+            result_json = {"error": str(e)}
+    try:
+        if pr['url'] in result_json.keys():
+
+            with open(f"03_ai_response_{get_pr_handle(pr['url'])}.json", "w") as f:
+                f.write(prompt)
+                f.write("----------------- ANSWER -----------------\n")
+                f.write(result)
+            return result_json.get(pr['url'])
         # workaround if AI does not return the correct key
-        if len(result.keys()) == 1:
-            return result.get(list(result.keys())[0])
+        if len(result_json.keys()) == 1:
+            return result_json.get(list(result_json.keys())[0])
         return []
     except:
         return []
@@ -462,7 +468,7 @@ def _process_ai_summary(jira_issue, i, jira_issues_len, related_issues, auto_tok
     debug_print(f"{i}/{jira_issues_len}: Taking parents in to account: {" ".join(parent_keys)}", flush=True)
 
     task = f"{i}/{jira_issues_len}: Thinking about {JIRA_HOST}/browse/{current_jira_issue['key']}: \"{current_jira_issue['summary']}\"…"
-    result = cache.cached_result(task, process_ai, task=task, prompt=prompt, auto_tokenizer_model=auto_tokenizer_model, expect_json=False)
+    result = cache.cached_result(task, process_ai, task=task, prompt=prompt, auto_tokenizer_model=auto_tokenizer_model)
     try:
         current_jira_issue['ai_description'] = result
     except:
