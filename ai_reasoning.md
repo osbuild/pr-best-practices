@@ -18,7 +18,7 @@ GitHub document loader directly?)
                         issues (default: data_collection.json)
   --rag_top_k RAG_TOP_K
                         Number of top similar Jira issues to return for each
-                        PR (default: 5)
+                        PR (default: 7)
   --rag_threshold RAG_THRESHOLD
                         Threshold for similarity score to consider a Jira
                         issue as similar to the given PR (range 0.0-1.0)
