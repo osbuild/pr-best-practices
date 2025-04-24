@@ -8,10 +8,31 @@ import base64
 
 def _handle_request(params):
     user = params.get("user_name", ["there"])[0]
-    
-    # Prepare the response message
-    message = f"👋 Hello {user}, nice to meet you! I'm healthy, up & running."
-    
+    command = params.get("command")
+    text = params.get("text", [""])[0]
+
+    if not command:
+        return {
+            "statusCode": 400,
+            "headers": {"Content-Type": "application/json"},
+            "body": {"error": "Missing command"}
+        }
+    command = command[0].lstrip("/").lower()
+    if command == "hi":
+        # Prepare the response message
+        message = f"👋 {command} {user}, nice to meet you! I'm healthy, up & running."
+    elif command == "pr2jira":
+        if text.lower() == "help":
+            message = f"""The command `/{command}` can show you, if your <https://github.com/pulls|PRs in Github> are 
+linked to a Jira ticket as described <https://addlinkhere.com|here>.
+If you add a username to `/{command}`, it will list you the same for another user, so you can nag them :meow_halo:.
+"""
+        else:
+            user = text if text else "You"
+            message = f"Processing {user} - TBD"
+    else:
+        message = f"👋 Hello {user}. The command '{command}' + '{text}' is not yet implemented. You are ahead of time!"
+
     # Return a valid JSON response
     return {
         "statusCode": 200,
