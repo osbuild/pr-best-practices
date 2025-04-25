@@ -485,6 +485,7 @@ def main():
     parser.add_argument("--dry-run", help="Don't send Slack notifications", default=False,
                         action=argparse.BooleanOptionalAction)
     parser.add_argument("--quiet", help="No info logging. Use for automations", action="store_true")
+    parser.add_argument("--debug", help="Enable debug logging", action="store_true")
     parser.add_argument("--help-md", help="Show help as Markdown", action="store_true")
 
     # workaround that required attribute are not given for --help-md
@@ -493,17 +494,24 @@ def main():
         sys.exit(0)
 
     args = parser.parse_args()
-    # pylint: disable=global-statement
 
-    if args.quiet:
-        logging.basicConfig(level=logging.WARNING)
+    # Assert that --quiet and --debug cannot be used together
+    if args.quiet and args.debug:
+        parser.error("The --quiet and --debug options cannot be used together.")
+
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    elif args.quiet:
+        logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     else:
+        # normal logging level - also reformatting for console
+        # to not show the level name
+        # for INFO and lower levels
+        logger.setLevel(logging.INFO)
         handler = logging.StreamHandler()
         handler.setFormatter(ConsoleFormatter())
         logger.addHandler(handler)
         logger.propagate = False
-
-        logging.basicConfig(level=logging.INFO)
 
     data_processor = DataProcessor(args.org, args.repo, args.author, args.github_token)
     data_processor.process()
