@@ -294,7 +294,41 @@ def main():
 
         logging.basicConfig(level=logging.INFO)
 
-    github_api = GhApi(owner=args.org, token=args.github_token)
+    with_jira, without_jira, unique_sorted_epics, related_issues, data_collection, data_collection_jira = 
+    get_data_collection(args.org, args.repo, args.author, args.github_token)
+
+    with open("data_collection.json", "w") as f:
+        f.write(json.dumps(data_collection))
+    with open("data_collection_already_linked.json", "w") as f:
+        f.write(json.dumps(data_collection_jira))
+
+    logger.info(f"# Pull requests with Jira keys: {len(with_jira)}")
+    for pull_request in with_jira:
+        pr_title_link = find_jira_key(pull_request['title'], pull_request['html_url'])
+        entry = (
+            f"*{pull_request['repo']}*: {pr_title_link}"
+            f" (+{pull_request['additions']}/-{pull_request['deletions']})"
+        )
+        logger.info(entry)
+    
+    logger.info()
+    logger.info(f"# Pull requests without Jira keys: {len(without_jira)}")
+    for pull_request in without_jira:
+        pr_title_link = find_jira_key(pull_request['title'], pull_request['html_url'])
+        entry = (
+            f"*{pull_request['repo']}*: {pr_title_link}"
+            f" (+{pull_request['additions']}/-{pull_request['deletions']})"
+        )
+        logger.info(entry)
+
+    logger.info(f"Stats:")
+    logger.info(f"PRs with jira key: {len(with_jira)}")
+    logger.info(f"PRs without jira key: {len(without_jira)}")
+    logger.info(f"Open Epics: {len(unique_sorted_epics)}")
+    logger.info(f"Related Issues: {len(related_issues)}")
+
+def get_data_collection(owner, repo, author, github_token):
+    github_api = GhApi(owner=owner, token=github_token)
 
     if os.getenv("PR_BEST_PRACTICES_TEST_CACHE"):
         logger.info("Loading cache…")
@@ -309,15 +343,15 @@ def main():
     else:
         cache = Cache(None) # indicates not to use cache
 
-    logger.info(f"Fetching pull requests for {args.org}/{args.repo} assigned to {args.author}")
+    logger.info(f"Fetching pull requests for {owner}/{repo} assigned to {author}")
 
     pull_request_list = cache.cached_result(
-        f"get_pull_request_list_{args.org}_{args.repo}_{args.author}",
+        f"get_pull_request_list_{owner}_{repo}_{author}",
         get_pull_request_list,
         github_api=github_api,
-        org=args.org,
-        repo=args.repo,
-        author=args.author
+        org=owner,
+        repo=repo,
+        author=author
     )
 
     jira_pattern = re.compile(r"\b[A-Z]+-\d+\b")
@@ -327,7 +361,7 @@ def main():
     logger.info("Fetching Jira issues")
     jira = JIRA(JIRA_HOST, token_auth=JIRA_TOKEN)
     jql = f'filter = {JIRA_TOPLEVEL_FILTER_ID}'
-    issues = cache.cached_result("jira_search_issues_{jql}", jira.search_issues, jql_str=jql)
+    issues = cache.cached_result(f"jira_search_issues_{jql}", jira.search_issues, jql_str=jql)
 
     fields = cache.cached_result("jira_fields", jira.fields)
     fieldmap = {f['id']: f['name'] for f in fields}
@@ -494,36 +528,8 @@ def main():
         },
         "fallback_issues": FALLBACK_ISSUES
     }
-
-    with open("data_collection.json", "w") as f:
-        f.write(json.dumps(data_collection))
-    with open("data_collection_already_linked.json", "w") as f:
-        f.write(json.dumps(data_collection_jira))
-
-    logger.info(f"# Pull requests with Jira keys: {len(with_jira)}")
-    for pull_request in with_jira:
-        pr_title_link = find_jira_key(pull_request['title'], pull_request['html_url'])
-        entry = (
-            f"*{pull_request['repo']}*: {pr_title_link}"
-            f" (+{pull_request['additions']}/-{pull_request['deletions']})"
-        )
-        logger.info(entry)
     
-    logger.info()
-    logger.info(f"# Pull requests without Jira keys: {len(without_jira)}")
-    for pull_request in without_jira:
-        pr_title_link = find_jira_key(pull_request['title'], pull_request['html_url'])
-        entry = (
-            f"*{pull_request['repo']}*: {pr_title_link}"
-            f" (+{pull_request['additions']}/-{pull_request['deletions']})"
-        )
-        logger.info(entry)
-
-    logger.info(f"Stats:")
-    logger.info(f"PRs with jira key: {len(with_jira)}")
-    logger.info(f"PRs without jira key: {len(without_jira)}")
-    logger.info(f"Open Epics: {len(unique_sorted_epics)}")
-    logger.info(f"Related Issues: {len(related_issues)}")
+    return with_jira,without_jira,unique_sorted_epics,related_issues,data_collection,data_collection_jira
 
 if __name__ == "__main__":
     main()
