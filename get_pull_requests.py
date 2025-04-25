@@ -7,6 +7,7 @@ Saves a `data_collection.json` to be used with `ai_reasoning.py` for further ana
 """
 
 import argparse
+import logging
 import os
 import re
 import requests
@@ -53,6 +54,8 @@ JIRA_PARENT_LINK_FIELD = "customfield_12313140"
 JIRA_EPIC_LINK_FIELD_NAME = "Epic Link"
 JIRA_EPIC_LINK_FIELD = "customfield_12311140"
 
+logger = logging.getLogger(__name__)
+
 def get_archived_repos(github_api, org):
     """
     Return a list of archived or disabled repositories
@@ -62,7 +65,7 @@ def get_archived_repos(github_api, org):
     try:
         res = github_api.repos.list_for_org(org)
     except:  # pylint: disable=bare-except
-        print(f"Couldn't get repositories for organisation {org}.")
+        logger.error(f"Couldn't get repositories for organisation {org}.")
 
     archived_repos = []
 
@@ -73,7 +76,7 @@ def get_archived_repos(github_api, org):
 
     if archived_repos:
         archived_repos_string = ", ".join(archived_repos)
-        print(f"The following repositories are archived or disabled and will be ignored:\n  {archived_repos_string}")
+        logger.info(f"The following repositories are archived or disabled and will be ignored:\n  {archived_repos_string}")
 
     return archived_repos
 
@@ -91,7 +94,7 @@ def get_pull_request_details(github_api, repo, pull_request):
         else:
             break
     else:
-        print(f"Tried {attempt} times to get details for {pull_request.html_url}. Skipping.")
+        logger.warning(f"Tried {attempt} times to get details for {pull_request.html_url}. Skipping.")
     
     commits = []
     for attempt in range(3):
@@ -102,14 +105,14 @@ def get_pull_request_details(github_api, repo, pull_request):
         else:
             break
     else:
-        print(f"Tried {attempt} times to get commits for {pull_request.html_url}. Skipping.")
+        logger.warning(f"Tried {attempt} times to get commits for {pull_request.html_url}. Skipping.")
 
     if pull_request_details is not None:
         # without the general details, it would not make sense to return the commit messages
         pull_request_details["commit_messages"] = [c.commit.message for c in commits]
         return pull_request_details
 
-    print("Couldn't get any pull requests details.")
+    logger.error("Couldn't get any pull requests details.")
     sys.exit(1)
 
 def get_pull_request_properties(github_api, pull_request, org, repo):
@@ -162,35 +165,35 @@ def get_pull_request_list(github_api, org, repo, author):
         author_query = ""
 
     if repo:
-        print(f"Fetching pull requests from one repository: {org}/{repo}")
+        logger.info(f"Fetching pull requests from one repository: {org}/{repo}")
         query = f"repo:{org}/{repo} type:pr is:open{author_query}"
         entire_org = False
     else:
-        print(f"Fetching pull requests from an entire organisation: {org}")
+        logger.info(f"Fetching pull requests from an entire organisation: {org}")
         query = f"org:{org} type:pr is:open{author_query}"
         entire_org = True
         archived_repos = get_archived_repos(github_api, org)
 
-    print(f"Query: {query}")
+    logger.info(f"Query: {query}")
 
     try:
         res = github_api.search.issues_and_pull_requests(q=query, per_page=100, sort="updated", order="asc")
     except Exception as e:  # pylint: disable=broad-exception-caught
-        print("Couldn't get any pull requests.", e)
+        logger.error("Couldn't get any pull requests.", e)
 
     if res is not None:
         pull_requests = res["items"]
-        print(f"{len(pull_requests)} pull requests retrieved.")
+        logger.info(f"{len(pull_requests)} pull requests retrieved.")
 
         for pull_request in pull_requests:
             if entire_org:  # necessary when iterating over an organisation
                 repo = pull_request.repository_url.split('/')[-1]
                 if archived_repos and repo in archived_repos:
-                    print(f" * Repository '{org}/{repo}' is archived or disabled. Skipping.")
+                    logger.info(f" * Repository '{org}/{repo}' is archived or disabled. Skipping.")
                     continue
 
             pull_request_props = get_pull_request_properties(github_api, pull_request, org, repo)
-            print(f" * Processing {pull_request.html_url} ...")
+            logger.info(f" * Processing {pull_request.html_url} ...")
             pull_request_list.append(pull_request_props)
 
     return pull_request_list
@@ -235,6 +238,18 @@ def get_parent(issue):
     return ret
 
 
+class ConsoleFormatter(logging.Formatter):
+    """
+    Custom formatter to include %(levelname)s only for WARNING or higher levels.
+    """
+    def format(self, record):
+        if record.levelno >= logging.WARNING:
+            self._style._fmt = "%(levelname)s: %(message)s"
+        else:
+            self._style._fmt = "%(message)s"
+        return super().format(record)
+
+
 def main():
     """Return a list of pull requests for a given organisation, repository and assignee"""
     global cache
@@ -258,6 +273,7 @@ def main():
     parser.add_argument("--author", help="Author of pull requests", required=False)
     parser.add_argument("--dry-run", help="Don't send Slack notifications", default=False,
                         action=argparse.BooleanOptionalAction)
+    parser.add_argument("--quiet", help="No info logging. Use for automations", action="store_true")
     parser.add_argument("--help-md", help="Show help as Markdown", action="store_true")
 
     # workaround that required attribute are not given for --help-md
@@ -268,10 +284,20 @@ def main():
     args = parser.parse_args()
     # pylint: disable=global-statement
 
+    if args.quiet:
+        logging.basicConfig(level=logging.WARNING)
+    else:
+        handler = logging.StreamHandler()
+        handler.setFormatter(ConsoleFormatter())
+        logger.addHandler(handler)
+        logger.propagate = False
+
+        logging.basicConfig(level=logging.INFO)
+
     github_api = GhApi(owner=args.org, token=args.github_token)
 
     if os.getenv("PR_BEST_PRACTICES_TEST_CACHE"):
-        print("Loading cache…")
+        logger.info("Loading cache…")
         import requests_cache
         # NOTE: this will cache forever, until you remove the `test_cache.sqlite`
         requests_cache.install_cache(
@@ -283,7 +309,7 @@ def main():
     else:
         cache = Cache(None) # indicates not to use cache
 
-    print(f"Fetching pull requests for {args.org}/{args.repo} assigned to {args.author}")
+    logger.info(f"Fetching pull requests for {args.org}/{args.repo} assigned to {args.author}")
 
     pull_request_list = cache.cached_result(
         f"get_pull_request_list_{args.org}_{args.repo}_{args.author}",
@@ -298,7 +324,7 @@ def main():
     with_jira = [item for item in pull_request_list if jira_pattern.search(item['title'])]
     without_jira = [item for item in pull_request_list if not jira_pattern.search(item['title'])]
 
-    print("Fetching Jira issues")
+    logger.info("Fetching Jira issues")
     jira = JIRA(JIRA_HOST, token_auth=JIRA_TOKEN)
     jql = f'filter = {JIRA_TOPLEVEL_FILTER_ID}'
     issues = cache.cached_result("jira_search_issues_{jql}", jira.search_issues, jql_str=jql)
@@ -306,21 +332,21 @@ def main():
     fields = cache.cached_result("jira_fields", jira.fields)
     fieldmap = {f['id']: f['name'] for f in fields}
     if JIRA_PARENT_LINK_FIELD not in fieldmap or fieldmap[JIRA_PARENT_LINK_FIELD] != JIRA_PARENT_LINK_FIELD_NAME:
-        print(f"ERROR: Field {JIRA_PARENT_LINK_FIELD} is not {JIRA_PARENT_LINK_FIELD_NAME}.")
-        print(f"Jira changed somehow, please update the script.")
+        logger.error(f"ERROR: Field {JIRA_PARENT_LINK_FIELD} is not {JIRA_PARENT_LINK_FIELD_NAME}.")
+        logger.error(f"Jira changed somehow, please update the script.")
         sys.exit(1)
 
     if JIRA_EPIC_LINK_FIELD not in fieldmap or fieldmap[JIRA_EPIC_LINK_FIELD] != JIRA_EPIC_LINK_FIELD_NAME:
-        print(f"ERROR: Field {JIRA_EPIC_LINK_FIELD} is not {JIRA_EPIC_LINK_FIELD_NAME}.")
-        print(f"Jira changed somehow, please update the script.")
-        print(json.dumps(fieldmap, indent=2))
+        logger.error(f"ERROR: Field {JIRA_EPIC_LINK_FIELD} is not {JIRA_EPIC_LINK_FIELD_NAME}.")
+        logger.error(f"Jira changed somehow, please update the script.")
+        logger.error(json.dumps(fieldmap, indent=2))
         sys.exit(1)
 
     child_issues = {}
     cnt = 0
     for i in issues:
         cnt += 1
-        print(f"Fetching children {cnt}/{len(issues)}: {i.key}…")
+        logger.info(f"Fetching children {cnt}/{len(issues)}: {i.key}…")
         child_issues[i.key] = cache.cached_result(f"jira_epic_children_{i.key}", jira.search_issues, jql_str=JIRA_CHILD_EPICS_JQL.format(jira_key=i.key))
     # print unique, sorted epics
     unique_sorted_epics = sorted(set([e for res in child_issues.values() for e in res]), key=lambda x: x.key)
@@ -328,14 +354,14 @@ def main():
     # initialize related with already fetched, to avoid fetching duplicates
     related_issues = { i.key: i for i in issues } | { i.key: i for i in unique_sorted_epics }
 
-    print("Search PR titles and description for jira references")
+    logger.info("Search PR titles and description for jira references")
     # skip though the PR title and description
     # and add the content of referenced jira issues
     # NOTE: related_issues now also contain keys with the PR-url
     # which are issues mentioned in the PR
     for item in pull_request_list:
         pr_key = item['html_url']
-        print(f"Searching in: {pr_key}")
+        logger.info(f"Searching in: {pr_key}")
         ref_nr = 0
 
         jira_keys = find_all_jira_keys(item['title'])
@@ -346,7 +372,7 @@ def main():
             except JIRAError as e:
                 # skip issues without permissions
                 if e.status_code in [403, 404]:
-                    print(f"Skip getting JIRA issue {k}: {e.text}")
+                    logger.info(f"Skip getting JIRA issue {k}: {e.text}")
                     continue
                 raise e
         if item['description']:
@@ -358,17 +384,17 @@ def main():
                 except JIRAError as e:
                     # skip issues without permissions
                     if e.status_code in [403, 404]:
-                        print(f"Skip getting JIRA issue {k}: {e.text}")
+                        logger.info(f"Skip getting JIRA issue {k}: {e.text}")
                         continue
                     raise e
     # drop duplicates again
     unique_sorted_epics = sorted(set([e for e in unique_sorted_epics]), key=lambda x: x.key)
 
-    print(f"All open Epics: {len(unique_sorted_epics)}")
+    logger.info(f"All open Epics: {len(unique_sorted_epics)}")
     for i in unique_sorted_epics:
-        print(f"  {i.key}: {i.fields.summary}")
-        print(f"  {' ' * len(i.key)}  {JIRA_HOST}/browse/{i.key}")
-        print(f"  {' ' * len(i.key)}  Parent: {get_parent(i)}")
+        logger.info(f"  {i.key}: {i.fields.summary}")
+        logger.info(f"  {' ' * len(i.key)}  {JIRA_HOST}/browse/{i.key}")
+        logger.info(f"  {' ' * len(i.key)}  Parent: {get_parent(i)}")
         parent = getattr(i.fields, JIRA_PARENT_LINK_FIELD, None)
         if parent and parent not in related_issues.keys():
             try:
@@ -376,7 +402,7 @@ def main():
             except JIRAError as e:
                 # skip issues without permissions
                 if e.status_code in [403, 404]:
-                    print(f"Skip getting JIRA issue {parent}: {e.text}")
+                    logger.info(f"Skip getting JIRA issue {parent}: {e.text}")
                     continue
                 raise e
         epic = getattr(i.fields, JIRA_EPIC_LINK_FIELD, None)
@@ -386,16 +412,16 @@ def main():
             except JIRAError as e:
                 # skip issues without permissions
                 if e.status_code in [403, 404]:
-                    print(f"Skip getting JIRA issue {epic}: {e.text}")
+                    logger.info(f"Skip getting JIRA issue {epic}: {e.text}")
                     continue
                 raise e
 
     # get all the parents for more context
-    print("Fetching related issues…")
+    logger.info("Fetching related issues…")
     get_more = True
     while get_more:
         get_more = False
-        print(f"{len(related_issues)}", end="\r", flush=True)
+        logger.info(f"{len(related_issues)}", end="\r", flush=True)
         for i in list(related_issues.values()): # doing list to make a copy
             parent = getattr(i.fields, JIRA_PARENT_LINK_FIELD, None)
             if parent and parent not in related_issues.keys():
@@ -405,10 +431,10 @@ def main():
                 except JIRAError as e:
                     # skip issues without permissions
                     if e.status_code in [403, 404]:
-                        print(f"Skip getting JIRA issue {parent}: {e.text}")
+                        logger.info(f"Skip getting JIRA issue {parent}: {e.text}")
                         continue
                     raise e
-    print("Done.")
+    logger.info("Done.")
 
     data_collection = {
         "pull_requests": [
@@ -474,30 +500,30 @@ def main():
     with open("data_collection_already_linked.json", "w") as f:
         f.write(json.dumps(data_collection_jira))
 
-    print(f"# Pull requests with Jira keys: {len(with_jira)}")
+    logger.info(f"# Pull requests with Jira keys: {len(with_jira)}")
     for pull_request in with_jira:
         pr_title_link = find_jira_key(pull_request['title'], pull_request['html_url'])
         entry = (
             f"*{pull_request['repo']}*: {pr_title_link}"
             f" (+{pull_request['additions']}/-{pull_request['deletions']})"
         )
-        print(entry)
+        logger.info(entry)
     
-    print()
-    print(f"# Pull requests without Jira keys: {len(without_jira)}")
+    logger.info()
+    logger.info(f"# Pull requests without Jira keys: {len(without_jira)}")
     for pull_request in without_jira:
         pr_title_link = find_jira_key(pull_request['title'], pull_request['html_url'])
         entry = (
             f"*{pull_request['repo']}*: {pr_title_link}"
             f" (+{pull_request['additions']}/-{pull_request['deletions']})"
         )
-        print(entry)
+        logger.info(entry)
 
-    print(f"Stats:")
-    print(f"PRs with jira key: {len(with_jira)}")
-    print(f"PRs without jira key: {len(without_jira)}")
-    print(f"Open Epics: {len(unique_sorted_epics)}")
-    print(f"Related Issues: {len(related_issues)}")
+    logger.info(f"Stats:")
+    logger.info(f"PRs with jira key: {len(with_jira)}")
+    logger.info(f"PRs without jira key: {len(without_jira)}")
+    logger.info(f"Open Epics: {len(unique_sorted_epics)}")
+    logger.info(f"Related Issues: {len(related_issues)}")
 
 if __name__ == "__main__":
     main()
