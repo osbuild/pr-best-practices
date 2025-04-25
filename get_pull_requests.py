@@ -250,6 +250,217 @@ class ConsoleFormatter(logging.Formatter):
         return super().format(record)
 
 
+class DataProcessor:
+    def __init__(self, owner, repo, author, github_token):
+        self.owner = owner
+        self.repo = repo
+        self.author = author
+        self.github_token = github_token
+        self.github_api = GhApi(owner=owner, token=github_token)
+
+        self.with_jira = []
+        self.without_jira = []
+        self.unique_sorted_epics = []
+        self.related_issues = {}
+        self.data_collection = {}
+        self.data_collection_jira = {}
+
+    def process(self):
+        if os.getenv("PR_BEST_PRACTICES_TEST_CACHE"):
+            logger.info("Loading cache…")
+            import requests_cache
+            # NOTE: this will cache forever, until you remove the `test_cache.sqlite`
+            requests_cache.install_cache(
+                'test_cache',
+                backend='sqlite',
+                expire_after=None,
+            )
+            cache = Cache("test_cache.pkl")
+        else:
+            cache = Cache(None)  # indicates not to use cache
+
+        logger.debug(f"Fetching pull requests for {self.owner}/{self.repo} assigned to {self.author}")
+
+        pull_request_list = cache.cached_result(
+            f"get_pull_request_list_{self.owner}_{self.repo}_{self.author}",
+            get_pull_request_list,
+            github_api=self.github_api,
+            org=self.owner,
+            repo=self.repo,
+            author=self.author
+        )
+
+        jira_pattern = re.compile(r"\b[A-Z]+-\d+\b")
+        self.with_jira = [item for item in pull_request_list if jira_pattern.search(item['title'])]
+        self.without_jira = [item for item in pull_request_list if not jira_pattern.search(item['title'])]
+
+        logger.info("Fetching Jira issues")
+        jira = JIRA(JIRA_HOST, token_auth=JIRA_TOKEN)
+        jql = f'filter = {JIRA_TOPLEVEL_FILTER_ID}'
+        issues = cache.cached_result(f"jira_search_issues_{jql}", jira.search_issues, jql_str=jql)
+
+        fields = cache.cached_result("jira_fields", jira.fields)
+        fieldmap = {f['id']: f['name'] for f in fields}
+        if JIRA_PARENT_LINK_FIELD not in fieldmap or fieldmap[JIRA_PARENT_LINK_FIELD] != JIRA_PARENT_LINK_FIELD_NAME:
+            logger.error(f"ERROR: Field {JIRA_PARENT_LINK_FIELD} is not {JIRA_PARENT_LINK_FIELD_NAME}.")
+            logger.error(f"Jira changed somehow, please update the script.")
+            sys.exit(1)
+
+        if JIRA_EPIC_LINK_FIELD not in fieldmap or fieldmap[JIRA_EPIC_LINK_FIELD] != JIRA_EPIC_LINK_FIELD_NAME:
+            logger.error(f"ERROR: Field {JIRA_EPIC_LINK_FIELD} is not {JIRA_EPIC_LINK_FIELD_NAME}.")
+            logger.error(f"Jira changed somehow, please update the script.")
+            logger.error(json.dumps(fieldmap, indent=2))
+            sys.exit(1)
+
+        child_issues = {}
+        cnt = 0
+        for i in issues:
+            cnt += 1
+            logger.info(f"Fetching children {cnt}/{len(issues)}: {i.key}…")
+            child_issues[i.key] = cache.cached_result(f"jira_epic_children_{i.key}", jira.search_issues, jql_str=JIRA_CHILD_EPICS_JQL.format(jira_key=i.key))
+
+        self.unique_sorted_epics = sorted(set([e for res in child_issues.values() for e in res]), key=lambda x: x.key)
+
+        # Initialize related issues with already fetched issues to avoid duplicates
+        self.related_issues = {i.key: i for i in issues} | {i.key: i for i in self.unique_sorted_epics}
+
+        logger.info("Search PR titles and description for Jira references")
+        for item in pull_request_list:
+            pr_key = item['html_url']
+            logger.info(f"Searching in: {pr_key}")
+            ref_nr = 0
+
+            jira_keys = find_all_jira_keys(item['title'])
+            for k in jira_keys:
+                try:
+                    self.unique_sorted_epics.append(cache.cached_result(f"jira_issue_{k}", jira.issue, id=k))
+                    ref_nr += 1
+                except JIRAError as e:
+                    if e.status_code in [403, 404]:
+                        logger.info(f"Skip getting JIRA issue {k}: {e.text}")
+                        continue
+                    raise e
+            if item['description']:
+                jira_keys = find_all_jira_keys(item['description'])
+                for k in jira_keys:
+                    try:
+                        self.unique_sorted_epics.append(cache.cached_result(f"jira_issue_{k}", jira.issue, id=k))
+                        ref_nr += 1
+                    except JIRAError as e:
+                        if e.status_code in [403, 404]:
+                            logger.info(f"Skip getting JIRA issue {k}: {e.text}")
+                            continue
+                        raise e
+
+        self.unique_sorted_epics = sorted(set([e for e in self.unique_sorted_epics]), key=lambda x: x.key)
+
+        logger.info(f"All open Epics: {len(self.unique_sorted_epics)}")
+        for i in self.unique_sorted_epics:
+            logger.info(f"  {i.key}: {i.fields.summary}")
+            logger.info(f"  {' ' * len(i.key)}  {JIRA_HOST}/browse/{i.key}")
+            logger.info(f"  {' ' * len(i.key)}  Parent: {get_parent(i)}")
+            parent = getattr(i.fields, JIRA_PARENT_LINK_FIELD, None)
+            if parent and parent not in self.related_issues.keys():
+                try:
+                    self.related_issues[parent] = cache.cached_result(f"jira_issue_{parent}", jira.issue, id=parent)
+                except JIRAError as e:
+                    if e.status_code in [403, 404]:
+                        logger.info(f"Skip getting JIRA issue {parent}: {e.text}")
+                        continue
+                    raise e
+            epic = getattr(i.fields, JIRA_EPIC_LINK_FIELD, None)
+            if epic and epic not in self.related_issues.keys():
+                try:
+                    self.related_issues[epic] = cache.cached_result(f"jira_issue_{epic}", jira.issue, id=epic)
+                except JIRAError as e:
+                    if e.status_code in [403, 404]:
+                        logger.info(f"Skip getting JIRA issue {epic}: {e.text}")
+                        continue
+                    raise e
+
+        logger.info("Fetching related issues…")
+        get_more = True
+        while get_more:
+            get_more = False
+            logger.info(f"{len(self.related_issues)}", end="\r", flush=True)
+            for i in list(self.related_issues.values()):
+                parent = getattr(i.fields, JIRA_PARENT_LINK_FIELD, None)
+                if parent and parent not in self.related_issues.keys():
+                    try:
+                        self.related_issues[parent] = cache.cached_result(f"jira_issue_{parent}", jira.issue, id=parent)
+                        get_more = True
+                    except JIRAError as e:
+                        if e.status_code in [403, 404]:
+                            logger.info(f"Skip getting JIRA issue {parent}: {e.text}")
+                            continue
+                        raise e
+        logger.info("Done.")
+
+        self.data_collection = {
+            "pull_requests": [
+                {
+                    'url': item['html_url'],
+                    'title': item['title'],
+                    'description': item['description'],
+                    'commit_messages': item['commit_messages']
+                } for item in pull_request_list if not jira_pattern.search(item['title'])
+            ],
+            "jira_issues": [
+                {
+                    'key': i.key,
+                    'summary': i.fields.summary,
+                    'assignee': i.fields.assignee.displayName if i.fields.assignee else "None",
+                    'description': i.fields.description,
+                    'comments': [{'author': c.author.displayName, 'body': c.body} for c in i.fields.comment.comments],
+                    'parent': get_parent(i)
+                } for i in self.unique_sorted_epics
+            ],
+            "related_issues": {
+                k: {
+                    'key': k,
+                    'summary': v.fields.summary,
+                    'assignee': v.fields.assignee.displayName if v.fields.assignee else "None",
+                    'description': v.fields.description,
+                    'comments': [{'author': c.author.displayName, 'body': c.body} for c in v.fields.comment.comments],
+                    'parent': get_parent(v)
+                } for k, v in self.related_issues.items()
+            },
+            "fallback_issues": FALLBACK_ISSUES
+        }
+
+        self.data_collection_jira = {
+            "pull_requests": [
+                {
+                    'url': item['html_url'],
+                    'title': item['title'],
+                    'description': item['description'],
+                    'commit_messages': item['commit_messages']
+                } for item in pull_request_list if jira_pattern.search(item['title'])
+            ],
+            "jira_issues": [
+                {
+                    'key': i.key,
+                    'summary': i.fields.summary,
+                    'assignee': i.fields.assignee.displayName if i.fields.assignee else "None",
+                    'description': i.fields.description,
+                    'comments': [{'author': c.author.displayName, 'body': c.body} for c in i.fields.comment.comments],
+                    'parent': get_parent(i)
+                } for i in self.unique_sorted_epics
+            ],
+            "related_issues": {
+                k: {
+                    'key': k,
+                    'summary': v.fields.summary,
+                    'assignee': v.fields.assignee.displayName if v.fields.assignee else "None",
+                    'description': v.fields.description,
+                    'comments': [{'author': c.author.displayName, 'body': c.body} for c in v.fields.comment.comments],
+                    'parent': get_parent(v)
+                } for k, v in self.related_issues.items()
+            },
+            "fallback_issues": FALLBACK_ISSUES
+        }
+
+
 def main():
     """Return a list of pull requests for a given organisation, repository and assignee"""
     global cache
@@ -294,16 +505,16 @@ def main():
 
         logging.basicConfig(level=logging.INFO)
 
-    with_jira, without_jira, unique_sorted_epics, related_issues, data_collection, data_collection_jira = 
-    get_data_collection(args.org, args.repo, args.author, args.github_token)
+    data_processor = DataProcessor(args.org, args.repo, args.author, args.github_token)
+    data_processor.process()
 
     with open("data_collection.json", "w") as f:
-        f.write(json.dumps(data_collection))
+        f.write(json.dumps(data_processor.data_collection))
     with open("data_collection_already_linked.json", "w") as f:
-        f.write(json.dumps(data_collection_jira))
+        f.write(json.dumps(data_processor.data_collection_jira))
 
-    logger.info(f"# Pull requests with Jira keys: {len(with_jira)}")
-    for pull_request in with_jira:
+    logger.info(f"# Pull requests with Jira keys: {len(data_processor.with_jira)}")
+    for pull_request in data_processor.with_jira:
         pr_title_link = find_jira_key(pull_request['title'], pull_request['html_url'])
         entry = (
             f"*{pull_request['repo']}*: {pr_title_link}"
@@ -312,8 +523,8 @@ def main():
         logger.info(entry)
     
     logger.info()
-    logger.info(f"# Pull requests without Jira keys: {len(without_jira)}")
-    for pull_request in without_jira:
+    logger.info(f"# Pull requests without Jira keys: {len(data_processor.without_jira)}")
+    for pull_request in data_processor.without_jira:
         pr_title_link = find_jira_key(pull_request['title'], pull_request['html_url'])
         entry = (
             f"*{pull_request['repo']}*: {pr_title_link}"
@@ -322,214 +533,11 @@ def main():
         logger.info(entry)
 
     logger.info(f"Stats:")
-    logger.info(f"PRs with jira key: {len(with_jira)}")
-    logger.info(f"PRs without jira key: {len(without_jira)}")
-    logger.info(f"Open Epics: {len(unique_sorted_epics)}")
-    logger.info(f"Related Issues: {len(related_issues)}")
+    logger.info(f"PRs with jira key: {len(data_processor.with_jira)}")
+    logger.info(f"PRs without jira key: {len(data_processor.without_jira)}")
+    logger.info(f"Open Epics: {len(data_processor.unique_sorted_epics)}")
+    logger.info(f"Related Issues: {len(data_processor.related_issues)}")
 
-def get_data_collection(owner, repo, author, github_token):
-    github_api = GhApi(owner=owner, token=github_token)
-
-    if os.getenv("PR_BEST_PRACTICES_TEST_CACHE"):
-        logger.info("Loading cache…")
-        import requests_cache
-        # NOTE: this will cache forever, until you remove the `test_cache.sqlite`
-        requests_cache.install_cache(
-            'test_cache',
-            backend='sqlite',
-            expire_after=None,
-        )
-        cache = Cache("test_cache.pkl")
-    else:
-        cache = Cache(None) # indicates not to use cache
-
-    logger.info(f"Fetching pull requests for {owner}/{repo} assigned to {author}")
-
-    pull_request_list = cache.cached_result(
-        f"get_pull_request_list_{owner}_{repo}_{author}",
-        get_pull_request_list,
-        github_api=github_api,
-        org=owner,
-        repo=repo,
-        author=author
-    )
-
-    jira_pattern = re.compile(r"\b[A-Z]+-\d+\b")
-    with_jira = [item for item in pull_request_list if jira_pattern.search(item['title'])]
-    without_jira = [item for item in pull_request_list if not jira_pattern.search(item['title'])]
-
-    logger.info("Fetching Jira issues")
-    jira = JIRA(JIRA_HOST, token_auth=JIRA_TOKEN)
-    jql = f'filter = {JIRA_TOPLEVEL_FILTER_ID}'
-    issues = cache.cached_result(f"jira_search_issues_{jql}", jira.search_issues, jql_str=jql)
-
-    fields = cache.cached_result("jira_fields", jira.fields)
-    fieldmap = {f['id']: f['name'] for f in fields}
-    if JIRA_PARENT_LINK_FIELD not in fieldmap or fieldmap[JIRA_PARENT_LINK_FIELD] != JIRA_PARENT_LINK_FIELD_NAME:
-        logger.error(f"ERROR: Field {JIRA_PARENT_LINK_FIELD} is not {JIRA_PARENT_LINK_FIELD_NAME}.")
-        logger.error(f"Jira changed somehow, please update the script.")
-        sys.exit(1)
-
-    if JIRA_EPIC_LINK_FIELD not in fieldmap or fieldmap[JIRA_EPIC_LINK_FIELD] != JIRA_EPIC_LINK_FIELD_NAME:
-        logger.error(f"ERROR: Field {JIRA_EPIC_LINK_FIELD} is not {JIRA_EPIC_LINK_FIELD_NAME}.")
-        logger.error(f"Jira changed somehow, please update the script.")
-        logger.error(json.dumps(fieldmap, indent=2))
-        sys.exit(1)
-
-    child_issues = {}
-    cnt = 0
-    for i in issues:
-        cnt += 1
-        logger.info(f"Fetching children {cnt}/{len(issues)}: {i.key}…")
-        child_issues[i.key] = cache.cached_result(f"jira_epic_children_{i.key}", jira.search_issues, jql_str=JIRA_CHILD_EPICS_JQL.format(jira_key=i.key))
-    # print unique, sorted epics
-    unique_sorted_epics = sorted(set([e for res in child_issues.values() for e in res]), key=lambda x: x.key)
-
-    # initialize related with already fetched, to avoid fetching duplicates
-    related_issues = { i.key: i for i in issues } | { i.key: i for i in unique_sorted_epics }
-
-    logger.info("Search PR titles and description for jira references")
-    # skip though the PR title and description
-    # and add the content of referenced jira issues
-    # NOTE: related_issues now also contain keys with the PR-url
-    # which are issues mentioned in the PR
-    for item in pull_request_list:
-        pr_key = item['html_url']
-        logger.info(f"Searching in: {pr_key}")
-        ref_nr = 0
-
-        jira_keys = find_all_jira_keys(item['title'])
-        for k in jira_keys:
-            try:
-                unique_sorted_epics.append(cache.cached_result(f"jira_issue_{k}", jira.issue, id=k))
-                ref_nr += 1
-            except JIRAError as e:
-                # skip issues without permissions
-                if e.status_code in [403, 404]:
-                    logger.info(f"Skip getting JIRA issue {k}: {e.text}")
-                    continue
-                raise e
-        if item['description']:
-            jira_keys = find_all_jira_keys(item['description'])
-            for k in jira_keys:
-                try:
-                    unique_sorted_epics.append(cache.cached_result(f"jira_issue_{k}", jira.issue, id=k))
-                    ref_nr += 1
-                except JIRAError as e:
-                    # skip issues without permissions
-                    if e.status_code in [403, 404]:
-                        logger.info(f"Skip getting JIRA issue {k}: {e.text}")
-                        continue
-                    raise e
-    # drop duplicates again
-    unique_sorted_epics = sorted(set([e for e in unique_sorted_epics]), key=lambda x: x.key)
-
-    logger.info(f"All open Epics: {len(unique_sorted_epics)}")
-    for i in unique_sorted_epics:
-        logger.info(f"  {i.key}: {i.fields.summary}")
-        logger.info(f"  {' ' * len(i.key)}  {JIRA_HOST}/browse/{i.key}")
-        logger.info(f"  {' ' * len(i.key)}  Parent: {get_parent(i)}")
-        parent = getattr(i.fields, JIRA_PARENT_LINK_FIELD, None)
-        if parent and parent not in related_issues.keys():
-            try:
-                related_issues[parent] = cache.cached_result(f"jira_issue_{parent}", jira.issue, id=parent)
-            except JIRAError as e:
-                # skip issues without permissions
-                if e.status_code in [403, 404]:
-                    logger.info(f"Skip getting JIRA issue {parent}: {e.text}")
-                    continue
-                raise e
-        epic = getattr(i.fields, JIRA_EPIC_LINK_FIELD, None)
-        if epic and epic not in related_issues.keys():
-            try:
-                related_issues[epic] = cache.cached_result(f"jira_issue_{epic}", jira.issue, id=epic)
-            except JIRAError as e:
-                # skip issues without permissions
-                if e.status_code in [403, 404]:
-                    logger.info(f"Skip getting JIRA issue {epic}: {e.text}")
-                    continue
-                raise e
-
-    # get all the parents for more context
-    logger.info("Fetching related issues…")
-    get_more = True
-    while get_more:
-        get_more = False
-        logger.info(f"{len(related_issues)}", end="\r", flush=True)
-        for i in list(related_issues.values()): # doing list to make a copy
-            parent = getattr(i.fields, JIRA_PARENT_LINK_FIELD, None)
-            if parent and parent not in related_issues.keys():
-                try:
-                    related_issues[parent] = cache.cached_result(f"jira_issue_{parent}", jira.issue, id=parent)
-                    get_more = True
-                except JIRAError as e:
-                    # skip issues without permissions
-                    if e.status_code in [403, 404]:
-                        logger.info(f"Skip getting JIRA issue {parent}: {e.text}")
-                        continue
-                    raise e
-    logger.info("Done.")
-
-    data_collection = {
-        "pull_requests": [
-            { 'url': item['html_url'],
-              'title': item['title'],
-              'description': item['description'],
-              'commit_messages': item['commit_messages']
-            }  for item in pull_request_list if not jira_pattern.search(item['title'])
-        ],
-        "jira_issues": [
-            { 'key': i.key,
-              'summary': i.fields.summary,
-              'assignee': i.fields.assignee.displayName if i.fields.assignee else "None",
-              'description': i.fields.description,
-              'comments': [ {'author': c.author.displayName, 'body': c.body} for c in i.fields.comment.comments ],
-              'parent': get_parent(i)
-            } for i in unique_sorted_epics
-        ],
-        "related_issues": {
-            k: { 'key': k, # "duplicate" the key for easier access
-                 'summary': v.fields.summary,
-                 'assignee': v.fields.assignee.displayName if v.fields.assignee else "None",
-                 'description': v.fields.description,
-                 'comments': [ {'author': c.author.displayName, 'body': c.body} for c in v.fields.comment.comments ],
-                 'parent': get_parent(v)
-            } for k, v in related_issues.items()
-        },
-        "fallback_issues": FALLBACK_ISSUES
-    }
-
-    # for reference/testing - data with already linked PRs
-    data_collection_jira = {
-        "pull_requests": [
-            { 'url': item['html_url'],
-              'title': item['title'],
-              'description': item['description'],
-              'commit_messages': item['commit_messages']
-            }  for item in pull_request_list if jira_pattern.search(item['title'])
-        ],
-        "jira_issues": [
-            { 'key': i.key,
-              'summary': i.fields.summary,
-              'assignee': i.fields.assignee.displayName if i.fields.assignee else "None",
-              'description': i.fields.description,
-              'comments': [ {'author': c.author.displayName, 'body': c.body} for c in i.fields.comment.comments ],
-              'parent': get_parent(i)
-            } for i in unique_sorted_epics
-        ],
-        "related_issues": {
-            k: { 'key': k, # "duplicate" the key for easier access
-                 'summary': v.fields.summary,
-                 'assignee': v.fields.assignee.displayName if v.fields.assignee else "None",
-                 'description': v.fields.description,
-                 'comments': [ {'author': c.author.displayName, 'body': c.body} for c in v.fields.comment.comments ],
-                 'parent': get_parent(v)
-            } for k, v in related_issues.items()
-        },
-        "fallback_issues": FALLBACK_ISSUES
-    }
-    
-    return with_jira,without_jira,unique_sorted_epics,related_issues,data_collection,data_collection_jira
 
 if __name__ == "__main__":
     main()
