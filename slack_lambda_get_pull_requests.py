@@ -27,12 +27,13 @@ def _process(event):
             )
             pr_list.append(entry)
         pr_message = "\n".join(pr_list)
-        pr_message += "\n\n:cat_typing: Please add a Jira key to your PR title as described <https://addlinkhere.com|here>."
+        # indenting does not work in slack, so we'll use some spaces for now
+        pr_message += "\n\n      :cat_typing: Please add a Jira key to your PR title as described <https://addlinkhere.com|here>."
     else:
         if len(data_processor.with_jira) == 0:
-            pr_message = f"{user} is not working on any PRs at the moment? :confusedoggo:"
+            pr_message = f" • {user} is not working on any PRs at the moment? :confusedoggo:"
         else:
-            pr_message = ":party-blob: All your PRs are best practice."
+            pr_message = " • :party-blob: All your PRs are best practice."
 
 
     message = f"Happy {datetime.now().strftime('%A')}! 👋\n\n"
@@ -52,7 +53,6 @@ def lambda_handler(event, context):
     logger.debug(f"start processing {event}")
 
     message = _process(event)
-    logger.debug(f"message: {message}")
     response_url = event.get("response_url")
     # updating doesn't work with response_url
     # original_message = event.get("original_message")

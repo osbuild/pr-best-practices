@@ -41,7 +41,7 @@ If you add a username to `/{command}`, it will list you the same for another use
             user = text if text else user
             github_token = os.environ.get('GITHUB_TOKEN')
             organization = os.environ.get('GITHUB_ORGANIZATION')
-            message = f":waittime: I will check the PRs of {user} and let you know if they are linked to a Jira ticket…"
+            message = f":waittime: I will check the PRs of *{user}* and let you know if they are linked to a Jira ticket…"
             payload = {
                 "user": user,
                 "organization": organization,
