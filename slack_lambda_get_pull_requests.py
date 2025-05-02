@@ -32,9 +32,9 @@ def _process(event):
         pr_message += "\n\n    :cat_typing: Please add a Jira key to your PR title e.g by using `/jira-epic …` described <https://github.com/osbuild/pr-best-practices?tab=readme-ov-file#features|here>."
     else:
         if len(data_processor.with_jira) == 0:
-            pr_message = f" • {user} is not working on any PRs at the moment? :confusedoggo:"
+            pr_message = f"    *{user}* is not working on any PRs at the moment? :confusedoggo:"
         else:
-            pr_message = " • :party-blob: All your PRs are best practice."
+            pr_message = "    :party-blob: All your PRs are best practice."
 
 
     message = f"Happy {datetime.now().strftime('%A')}! 👋\n\n"
@@ -54,7 +54,7 @@ def _process(event):
     else:
         message += " • _TBD_\n\n"
 
-    message += f"*And {len(data_processor.without_jira)} of {len(data_processor.with_jira) + len(data_processor.without_jira)} PRs not tracked in Jira* 🟠\n"
+    message += f"*{len(data_processor.without_jira)} of {len(data_processor.with_jira) + len(data_processor.without_jira)} PRs not tracked in Jira* 🟠\n"
     message += f"{pr_message}"
     return message
 
