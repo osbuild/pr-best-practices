@@ -26,7 +26,7 @@ GENERATED_SVGs=get_pull_requests.svg ai_reasoning.svg
 docs: $(GENERATED_MDs) $(GENERATED_SVGs) ## update all generated docs
 
 .PHONY: clean
-clean: clean_cache ## clean all generated files
+clean: clean-cache ## clean all generated files
 	rm -f $(GENERATED_MDs)
 	rm -f $(GENERATED_SVGs)
 
