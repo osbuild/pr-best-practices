@@ -1,3 +1,4 @@
+from datetime import datetime
 import requests
 
 from get_pull_requests import DataProcessor
@@ -21,7 +22,7 @@ def _process(event):
         for pr in data_processor.without_jira:
             pr_title_link = f"<{pr['html_url']}|{pr['title']}>"
             entry = (
-                f"*{pr['repo']}*: {pr_title_link} "
+                f"* {pr['repo']}: {pr_title_link} "
                 f"(+{pr['additions']}/-{pr['deletions']})"
             )
             pr_list.append(entry)
@@ -33,12 +34,19 @@ def _process(event):
         else:
             pr_message = ":party-blob: All your PRs are best practice."
 
-    message = f"{user} has {len(data_processor.without_jira)}"
-    message += f" of {len(data_processor.with_jira) + len(data_processor.without_jira)}"
-    message += f" PRs without a Jira key:\n"
+
+    message = f"Happy {datetime.now().strftime('%A')}! 👋\n\n"
+
+    message += f"*Work from {user}'s current sprint* 🟢\n"
+    message += "* _*TBD*_\n\n"
+
+    message += "*Other work* 🟡\n"
+    message += "* _*TBD*_\n\n"
+
+    message += f"*And {len(data_processor.without_jira)} of {len(data_processor.with_jira) + len(data_processor.without_jira)} PRs not tracked in Jira* 🟠\n"
     message += f"{pr_message}"
     return message
-    
+
 
 def lambda_handler(event, context):
     logger.debug(f"start processing {event}")
@@ -46,8 +54,13 @@ def lambda_handler(event, context):
     message = _process(event)
     logger.debug(f"message: {message}")
     response_url = event.get("response_url")
+    original_message = event.get("original_message")
 
     logger.debug(f"responding to: {response_url}")
+    response = {"text": original_message.replace("waittime", "done_it_is"), "replace_original": True}
+    r = requests.post(response_url, json=response)
+    r.raise_for_status()
+
     response = {"text": message}
     r = requests.post(response_url, json=response)
     r.raise_for_status()

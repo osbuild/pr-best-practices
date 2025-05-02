@@ -41,10 +41,12 @@ If you add a username to `/{command}`, it will list you the same for another use
             user = text if text else user
             github_token = os.environ.get('GITHUB_TOKEN')
             organization = os.environ.get('GITHUB_ORGANIZATION')
+            message = f":waittime: I will check the PRs of {user} and let you know if they are linked to a Jira ticket…"
             payload = {
                 "user": user,
                 "organization": organization,
                 "github_token": github_token,
+                "original_message": message,
                 "response_url": params.get('response_url')[0],
             }
             lambda_client.invoke(
@@ -52,9 +54,9 @@ If you add a username to `/{command}`, it will list you the same for another use
                     InvocationType='Event',  # async invoke
                     Payload=json.dumps(payload)
             )
-            message = f"👋 I will check the PRs of {user} and let you know if they are linked to a Jira ticket."
+
     else:
-        message = f"👋 Hello {user}. The command '{command}' + '{text}' is not yet implemented. You are ahead of time!"
+        message = f":stop: Hello {user}. The command '{command}' + '{text}' is not yet implemented. You are ahead of time!"
 
     # Return a valid JSON response
     return {
