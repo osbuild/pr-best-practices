@@ -1,3 +1,11 @@
+#!/usr/bin/env python3
+"""
+Slack Lambda Function to be used in AWS Lambda.
+This function handles incoming requests from Slack, verifies the request signature,
+and processes commands sent to the Slack bot.
+"""
+
+import boto3
 import os
 import json
 import time
@@ -5,6 +13,8 @@ import hmac
 import hashlib
 import urllib.parse
 import base64
+
+lambda_client = boto3.client('lambda')
 
 def _handle_request(params):
     user = params.get("user_name", ["there"])[0]
@@ -28,8 +38,21 @@ linked to a Jira ticket as described <https://addlinkhere.com|here>.
 If you add a username to `/{command}`, it will list you the same for another user, so you can nag them :meow_halo:.
 """
         else:
-            user = text if text else "You"
-            message = f"Processing {user} - TBD"
+            user = text if text else user
+            github_token = os.environ.get('GITHUB_TOKEN')
+            organization = os.environ.get('GITHUB_ORGANIZATION')
+            payload = {
+                "user": user,
+                "organization": organization,
+                "github_token": github_token,
+                "response_url": params.get('response_url')[0],
+            }
+            lambda_client.invoke(
+                    FunctionName='schutzbot_command_get_pull_requests',
+                    InvocationType='Event',  # async invoke
+                    Payload=json.dumps(payload)
+            )
+            message = f"👋 I will check the PRs of {user} and let you know if they are linked to a Jira ticket."
     else:
         message = f"👋 Hello {user}. The command '{command}' + '{text}' is not yet implemented. You are ahead of time!"
 

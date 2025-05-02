@@ -3,3 +3,12 @@ __pycache__
 test_cache.pkl
 test_cache.sqlite
 ai_cache.pkl
+
+# For AWS deployment
+/package_hi
+/package_get_pull_requests
+aws_lambda_hi.zip
+aws_lambda_get_pull_requests.zip
+
+# pyenv
+.python-version

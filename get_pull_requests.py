@@ -15,10 +15,8 @@ import time
 import pickle
 import sys
 import json
-from jira import JIRA, JIRAError
 
 from ghapi.all import GhApi
-from fastcore.foundation import L
 
 from utils import format_help_as_md, Cache
 
@@ -192,8 +190,8 @@ def get_pull_request_list(github_api, org, repo, author):
                     logger.info(f" * Repository '{org}/{repo}' is archived or disabled. Skipping.")
                     continue
 
-            pull_request_props = get_pull_request_properties(github_api, pull_request, org, repo)
             logger.info(f" * Processing {pull_request.html_url} ...")
+            pull_request_props = get_pull_request_properties(github_api, pull_request, org, repo)
             pull_request_list.append(pull_request_props)
 
     return pull_request_list
@@ -251,12 +249,14 @@ class ConsoleFormatter(logging.Formatter):
 
 
 class DataProcessor:
-    def __init__(self, owner, repo, author, github_token):
+    def __init__(self, owner, repo, author, only_repos, github_token, jira_token=None):
         self.owner = owner
         self.repo = repo
         self.author = author
+        self.only_repos = only_repos
         self.github_token = github_token
         self.github_api = GhApi(owner=owner, token=github_token)
+        self.jira_token = jira_token
 
         self.with_jira = []
         self.without_jira = []
@@ -294,8 +294,16 @@ class DataProcessor:
         self.with_jira = [item for item in pull_request_list if jira_pattern.search(item['title'])]
         self.without_jira = [item for item in pull_request_list if not jira_pattern.search(item['title'])]
 
+        if self.only_repos:
+            logger.info("Only fetching pull requests from repositories.")
+            return
+
+        # import here to avoid importing when not needed
+        global JIRA, JIRAError # pylint: disable=global-statement
+        from jira import JIRA, JIRAError
+
         logger.info("Fetching Jira issues")
-        jira = JIRA(JIRA_HOST, token_auth=JIRA_TOKEN)
+        jira = JIRA(JIRA_HOST, token_auth=self.jira_token)
         jql = f'filter = {JIRA_TOPLEVEL_FILTER_ID}'
         issues = cache.cached_result(f"jira_search_issues_{jql}", jira.search_issues, jql_str=jql)
 
@@ -464,6 +472,7 @@ class DataProcessor:
 def main():
     """Return a list of pull requests for a given organisation, repository and assignee"""
     global cache
+    global JIRA_TOKEN
     parser = argparse.ArgumentParser(allow_abbrev=False,
         description=__doc__,
         epilog=doc_epilog
@@ -478,7 +487,7 @@ def main():
 
     parser.add_argument("--github-token", help="Set a token for github.com", required=token_arg_required)
     parser.add_argument("--jira-host", help="The jira hostname to use", required=(JIRA_HOST is None))
-    parser.add_argument("--jira-token", help="Set the API token for jira", required=(JIRA_TOKEN is None))
+    parser.add_argument("--jira-token", help="Set the API token for jira")
     parser.add_argument("--org", help="Set an organisation on github.com", required=True)
     parser.add_argument("--repo", help="Set a repo in `--org` on github.com", required=False)
     parser.add_argument("--author", help="Author of pull requests", required=False)
@@ -486,6 +495,7 @@ def main():
                         action=argparse.BooleanOptionalAction)
     parser.add_argument("--quiet", help="No info logging. Use for automations", action="store_true")
     parser.add_argument("--debug", help="Enable debug logging", action="store_true")
+    parser.add_argument("--only-repos", help="Only fetch pull requests from repositories", action="store_true")
     parser.add_argument("--help-md", help="Show help as Markdown", action="store_true")
 
     # workaround that required attribute are not given for --help-md
@@ -494,6 +504,14 @@ def main():
         sys.exit(0)
 
     args = parser.parse_args()
+
+    if JIRA_TOKEN is None and args.jira_token is None:
+        parser.error("The JIRA_TOKEN environment variable or the --jira-token argument is required.")
+
+    JIRA_TOKEN = args.jira_token or JIRA_TOKEN
+
+    if not args.only_repos and not args.jira_token and not JIRA_TOKEN:
+        parser.error("The --jira-token argument is required when not using --only-repos.")
 
     # Assert that --quiet and --debug cannot be used together
     if args.quiet and args.debug:
@@ -513,13 +531,14 @@ def main():
         logger.addHandler(handler)
         logger.propagate = False
 
-    data_processor = DataProcessor(args.org, args.repo, args.author, args.github_token)
+    data_processor = DataProcessor(args.org, args.repo, args.author, args.only_repos, args.github_token)
     data_processor.process()
 
-    with open("data_collection.json", "w") as f:
-        f.write(json.dumps(data_processor.data_collection))
-    with open("data_collection_already_linked.json", "w") as f:
-        f.write(json.dumps(data_processor.data_collection_jira))
+    if not args.only_repos:
+        with open("data_collection.json", "w") as f:
+            f.write(json.dumps(data_processor.data_collection))
+        with open("data_collection_already_linked.json", "w") as f:
+            f.write(json.dumps(data_processor.data_collection_jira))
 
     logger.info(f"# Pull requests with Jira keys: {len(data_processor.with_jira)}")
     for pull_request in data_processor.with_jira:
@@ -530,7 +549,7 @@ def main():
         )
         logger.info(entry)
     
-    logger.info()
+    logger.info("---") # spacer for console output
     logger.info(f"# Pull requests without Jira keys: {len(data_processor.without_jira)}")
     for pull_request in data_processor.without_jira:
         pr_title_link = find_jira_key(pull_request['title'], pull_request['html_url'])
@@ -543,8 +562,9 @@ def main():
     logger.info(f"Stats:")
     logger.info(f"PRs with jira key: {len(data_processor.with_jira)}")
     logger.info(f"PRs without jira key: {len(data_processor.without_jira)}")
-    logger.info(f"Open Epics: {len(data_processor.unique_sorted_epics)}")
-    logger.info(f"Related Issues: {len(data_processor.related_issues)}")
+    if not args.only_repos:
+        logger.info(f"Open Epics: {len(data_processor.unique_sorted_epics)}")
+        logger.info(f"Related Issues: {len(data_processor.related_issues)}")
 
 
 if __name__ == "__main__":

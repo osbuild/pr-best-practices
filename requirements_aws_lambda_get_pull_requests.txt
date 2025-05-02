@@ -1,0 +1,4 @@
+jira
+requests
+requests_cache
+ghapi
