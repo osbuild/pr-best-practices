@@ -28,7 +28,7 @@ def _process(event):
             pr_list.append(entry)
         pr_message = "\n".join(pr_list)
         # indenting does not work in slack, so we'll use some spaces for now
-        pr_message += "\n\n      :cat_typing: Please add a Jira key to your PR title as described <https://addlinkhere.com|here>."
+        pr_message += "\n\n    :cat_typing: Please add a Jira key to your PR title e.g by using `/jira-epic …` described <https://github.com/osbuild/pr-best-practices?tab=readme-ov-file#features|here>."
     else:
         if len(data_processor.with_jira) == 0:
             pr_message = f" • {user} is not working on any PRs at the moment? :confusedoggo:"

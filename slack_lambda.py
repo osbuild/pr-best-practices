@@ -34,7 +34,7 @@ def _handle_request(params):
     elif command == "pr2jira":
         if text.lower() == "help":
             message = f"""The command `/{command}` can show you, if your <https://github.com/pulls|PRs in Github> are 
-linked to a Jira ticket as described <https://addlinkhere.com|here>.
+linked to a Jira ticket.
 If you add a username to `/{command}`, it will list you the same for another user, so you can nag them :meow_halo:.
 """
         else:
