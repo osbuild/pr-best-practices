@@ -1,4 +1,5 @@
 from datetime import datetime
+import os
 import requests
 
 from get_pull_requests import DataProcessor
@@ -38,11 +39,20 @@ def _process(event):
 
     message = f"Happy {datetime.now().strftime('%A')}! 👋\n\n"
 
-    message += f"*Work from {user}'s current sprint* 🟢\n"
-    message += " • _TBD_\n\n"
+    current_sprint_url = os.environ.get("CURRENT_SPRINT_URL")
+    backlog_url = os.environ.get("BACKLOG_URL")
+
+    message += "*Work from your current sprint* 🟢\n"
+    if current_sprint_url:
+        message += f" • <{current_sprint_url}|Current Sprint>\n\n"
+    else:
+        message += " • _TBD_\n\n"
 
     message += "*Other work* 🟡\n"
-    message += " • _TBD_\n\n"
+    if backlog_url:
+        message += f" • <{backlog_url}|Backlog>\n\n"
+    else:
+        message += " • _TBD_\n\n"
 
     message += f"*And {len(data_processor.without_jira)} of {len(data_processor.with_jira) + len(data_processor.without_jira)} PRs not tracked in Jira* 🟠\n"
     message += f"{pr_message}"
