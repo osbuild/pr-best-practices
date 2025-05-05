@@ -28,6 +28,8 @@ def _handle_request(params, staging=False):
             "body": {"error": "Missing command"}
         }
     command = command[0].lstrip("/").lower()
+    if staging:
+        command = command.removesuffix("_staging")
     if command == "hi":
         # Prepare the response message
         message = f"👋 {command} {user}, nice to meet you! I'm healthy, up & running."
@@ -50,7 +52,7 @@ If you add a username to `/{command}`, it will list you the same for another use
             jira_current_sprint_url = os.environ.get("JIRA_CURRENT_SPRINT_URL")
             jira_backlog_url = os.environ.get("JIRA_BACKLOG_URL")
 
-            message = f":waittime: I will check the PRs of *{user}* and let you know if they are linked to a Jira ticket…"
+            message = f":waittime: I will check the PRs of *{args}*, check issues from {user}@{jira_user_domain} and let you know if all is good…"
             payload = {
                 "user": user,
                 "args": args,
@@ -73,6 +75,8 @@ If you add a username to `/{command}`, it will list you the same for another use
     else:
         message = f":stop: Hello {user}. The command '{command}' + '{text}' is not yet implemented. You are ahead of time!"
 
+    if staging:
+        message = f"I'm the staging version!\n\n{message}"
     # Return a valid JSON response
     return {
         "statusCode": 200,
