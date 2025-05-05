@@ -92,7 +92,7 @@ def main():
     processed_issues = data_processor.process_issues()
 
     with open("current_sprint_issues.json", "w") as f:
-        f.write(json.dumps(processed_issues, indent=2))
+        f.write(json.dumps(processed_issues, ensure_ascii=False, indent=2))
 
     logger.info(f"Processed {len(processed_issues)} issues from the current sprint.")
 
