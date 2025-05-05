@@ -2,3 +2,6 @@ jira
 requests
 requests_cache
 ghapi
+
+# jira needs 'pkg_resources'
+setuptools
