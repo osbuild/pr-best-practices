@@ -16,7 +16,7 @@ import base64
 
 lambda_client = boto3.client('lambda')
 
-def _handle_request(params):
+def _handle_request(params, staging=False):
     user = params.get("user_name", ["there"])[0]
     command = params.get("command")
     text = params.get("text", [""])[0]
@@ -60,7 +60,7 @@ If you add a username to `/{command}`, it will list you the same for another use
                 "response_url": params.get('response_url')[0],
             }
             lambda_client.invoke(
-                    FunctionName='schutzbot_command_get_pull_requests',
+                    FunctionName='schutzbot_command_get_pull_requests' if not staging else 'schutzbot_command_staging_get_pull_requests',
                     InvocationType='Event',  # async invoke
                     Payload=json.dumps(payload)
             )
@@ -149,5 +149,7 @@ def lambda_handler(event, context):
 
     params = urllib.parse.parse_qs(body)
 
-    return _handle_request(params)
+    function_name = context.function_name.lower()
+    staging = "staging" in function_name
+    return _handle_request(params, staging)
 
