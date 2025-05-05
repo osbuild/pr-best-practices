@@ -130,7 +130,8 @@ def get_pull_request_properties(github_api, pull_request, org, repo):
     pr_properties["updated_at"] = pull_request.updated_at
     #pr_properties["last_updated_days"] = get_last_updated_days(pull_request.updated_at)
     #pr_properties["login"] = get_slack_userid(pull_request.user['login'])
-    pr_properties["requested_reviewers"] = pull_request_details["requested_reviewers"]
+    # transform fastcore.foundation.L to native list
+    pr_properties["requested_reviewers"] = list(pull_request_details["requested_reviewers"])
     pr_properties["additions"] = pull_request_details["additions"]
     pr_properties["deletions"] = pull_request_details["deletions"]
     pr_properties["draft"] = pull_request_details["draft"]
@@ -291,8 +292,16 @@ class DataProcessor:
         )
 
         jira_pattern = re.compile(r"\b[A-Z]+-\d+\b")
-        self.with_jira = [item for item in pull_request_list if jira_pattern.search(item['title'])]
-        self.without_jira = [item for item in pull_request_list if not jira_pattern.search(item['title'])]
+        # also extend the item to include the "jira_key" field
+        for item in pull_request_list:
+            item['jira_keys'] = re.findall(jira_pattern, item['title'])
+            if item['jira_keys'] and len(item['jira_keys']) > 0:
+                # make the first one the "main" key
+                item['jira_key'] = item['jira_keys'][0]
+                self.with_jira.append(item)
+            else:
+                item['jira_key'] = None
+                self.without_jira.append(item)
 
         if self.only_repos:
             logger.info("Only fetching pull requests from repositories.")
@@ -539,6 +548,10 @@ def main():
             f.write(json.dumps(data_processor.data_collection))
         with open("data_collection_already_linked.json", "w") as f:
             f.write(json.dumps(data_processor.data_collection_jira))
+
+    with open("pr_data_collection.json", "w") as f:
+        data = {"with_jira": data_processor.with_jira, "without_jira": data_processor.without_jira}
+        f.write(json.dumps(data, indent=2))
 
     logger.info(f"# Pull requests with Jira keys: {len(data_processor.with_jira)}")
     for pull_request in data_processor.with_jira:
