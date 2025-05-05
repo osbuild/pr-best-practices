@@ -18,30 +18,65 @@ logger = logging.getLogger(__name__)
 
 JIRA_HOST = os.getenv("JIRA_HOST", "https://issues.redhat.com")
 JIRA_TOKEN = os.getenv("JIRA_TOKEN")
+BACKLOG_FILTER_ID = os.getenv("JIRA_BACKLOG_FILTER_ID")
+JIRA_BOARD_ID = int(os.getenv("JIRA_BOARD_ID"))
 
 class JiraDataProcessor:
     def __init__(self, jira_token):
         self.jira_token = jira_token
         self.jira = JIRA(JIRA_HOST, token_auth=self.jira_token)
-        self.issues = []
 
-    def fetch_current_sprint_issues(self):
+
+    def fetch_sprints(self, board_id):
         """
-        Fetch issues for the current sprint.
+        Fetch all sprints for a given board ID.
         """
-        jql = "sprint in openSprints() and assignee = currentUser()"
         try:
-            self.issues = self.jira.search_issues(jql_str=jql)
+            print(f"Fetching sprints for board ID: {board_id}")
+            sprints = self.jira.sprints(board_id)
+            # Filter sprints by the given board ID
+            sprints_filtered = [sprint for sprint in sprints if getattr(sprint, 'originBoardId', None)]
+            ret = []
+            for sprint in sprints_filtered:
+                ret.append({
+                    'id': sprint.id,
+                    'originBoardId': sprint.originBoardId,
+                    'name': sprint.name,
+                    'state': sprint.state,
+                    'startDate': sprint.startDate,
+                    'endDate': sprint.endDate
+                })
+            return ret
         except JIRAError as e:
-            logger.error(f"Failed to fetch issues for the current sprint: {e}")
+            logger.error(f"Failed to fetch sprints for board ID {board_id}: {e}")
             sys.exit(1)
 
-    def process_issues(self):
+
+    def fetch_boards(self, project_key):
         """
-        Process the fetched issues and return structured data.
+        Fetch all boards for a given project key.
+        """
+        try:
+            boards = self.jira.boards(projectKeyOrID=project_key)
+            ret = []
+            for board in boards:
+                ret.append({
+                    'id': board.id,
+                    'name': board.name,
+                    'type': board.type
+                })
+            return ret
+        except JIRAError as e:
+            logger.error(f"Failed to fetch boards for project key {project_key}: {e}")
+            sys.exit(1)
+
+
+    def _process_issues(self, issues):
+        """
+        Internal method to process fetched issues and return structured data.
         """
         processed_issues = []
-        for issue in self.issues:
+        for issue in issues:
             processed_issues.append({
                 'key': issue.key,
                 'summary': issue.fields.summary,
@@ -50,6 +85,31 @@ class JiraDataProcessor:
                 'status': issue.fields.status.name
             })
         return processed_issues
+
+    def fetch_current_sprint_issues(self):
+        """
+        Fetch issues for the current sprint and process them.
+        """
+        jql = "sprint in openSprints() and assignee = currentUser()"
+        try:
+            issues = self.jira.search_issues(jql_str=jql)
+        except JIRAError as e:
+            logger.error(f"Failed to fetch issues for the current sprint: {e}")
+            sys.exit(1)
+        return self._process_issues(issues)
+
+    def fetch_current_backlog_issues(self, jira_filter_id):
+        """
+        Fetch issues for the backlog using a specific Jira filter ID and process them.
+        """
+        jql = f'filter = {jira_filter_id} and assignee = currentUser()'
+        try:
+            issues = self.jira.search_issues(jql_str=jql)
+        except JIRAError as e:
+            logger.error(f"Failed to fetch backlog issues for filter ID {jira_filter_id}: {e}")
+            sys.exit(1)
+        return self._process_issues(issues)
+
 
 def main():
     """Query Jira issues for the current sprint and process them."""
@@ -88,13 +148,20 @@ def main():
         logger.propagate = False
 
     data_processor = JiraDataProcessor(jira_token)
-    data_processor.fetch_current_sprint_issues()
-    processed_issues = data_processor.process_issues()
+
+    # Uncomment the following line to fetch boards for a specific project key
+    # can be useful for debugging
+    # print(json.dumps(data_processor.fetch_boards("COMPOSER"), indent=2))
+
+    processed_issues = {
+        "current_sprint": data_processor.fetch_current_sprint_issues(),
+        "backlog": data_processor.fetch_current_backlog_issues(BACKLOG_FILTER_ID)
+    }
 
     with open("current_sprint_issues.json", "w") as f:
         f.write(json.dumps(processed_issues, ensure_ascii=False, indent=2))
 
-    logger.info(f"Processed {len(processed_issues)} issues from the current sprint.")
-
+    sprints = data_processor.fetch_sprints(JIRA_BOARD_ID)
+    print(json.dumps(sprints, indent=2))
 if __name__ == "__main__":
     main()
