@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 JIRA_HOST = os.getenv("JIRA_HOST", "https://issues.redhat.com")
 JIRA_TOKEN = os.getenv("JIRA_TOKEN")
 
-JIRA_BOARD_ID = int(os.getenv("JIRA_BOARD_ID"))
+JIRA_BOARD_ID = os.getenv("JIRA_BOARD_ID")
 
 JIRA_USERNAME = os.getenv("JIRA_USERNAME")
 
