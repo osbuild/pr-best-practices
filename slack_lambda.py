@@ -38,14 +38,24 @@ linked to a Jira ticket.
 If you add a username to `/{command}`, it will list you the same for another user, so you can nag them :meow_halo:.
 """
         else:
-            user = text if text else user
+            args = text if text else user
+
             github_token = os.environ.get('GITHUB_TOKEN')
-            organization = os.environ.get('GITHUB_ORGANIZATION')
+            github_organization = os.environ.get('GITHUB_ORGANIZATION')
+
+            jira_token = os.environ.get('JIRA_TOKEN')
+            jira_user_domain = os.environ.get('JIRA_USER_DOMAIN')
+            jira_board_id = os.environ.get('JIRA_BOARD_ID')
+
             message = f":waittime: I will check the PRs of *{user}* and let you know if they are linked to a Jira ticket…"
             payload = {
                 "user": user,
-                "organization": organization,
+                "args": args,
+                "github_organization": github_organization,
                 "github_token": github_token,
+                "jira_token": jira_token,
+                "jira_user_domain": jira_user_domain,
+                "jira_board_id": jira_board_id,
                 "original_message": message,
                 "response_url": params.get('response_url')[0],
             }

@@ -65,7 +65,7 @@ aws_lambda_main.zip: slack_lambda.py
 	zip -g $@ $^"
 
 # Suggested way by AWS to build the Lambda package
-aws_lambda_get_pull_requests.zip: slack_lambda_get_pull_requests.py utils.py get_pull_requests.py
+aws_lambda_get_pull_requests.zip: slack_lambda_get_pull_requests.py utils.py get_pull_requests.py get_jira_sprint.py
 	podman run --rm -v "$(PWD)":/var/task:Z -w /var/task amazonlinux:2 bash -c "\
 	yum install -y python3-pip zip && \
 	pip3 install --upgrade pip && \

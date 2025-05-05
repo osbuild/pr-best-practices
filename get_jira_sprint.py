@@ -18,15 +18,17 @@ logger = logging.getLogger(__name__)
 
 JIRA_HOST = os.getenv("JIRA_HOST", "https://issues.redhat.com")
 JIRA_TOKEN = os.getenv("JIRA_TOKEN")
-BACKLOG_FILTER_ID = os.getenv("JIRA_BACKLOG_FILTER_ID")
+
 JIRA_BOARD_ID = int(os.getenv("JIRA_BOARD_ID"))
+
 JIRA_USERNAME = os.getenv("JIRA_USERNAME")
 
 class JiraDataProcessor:
-    def __init__(self, jira_token, jira_username=None, backlog_filter_id=None):
+    def __init__(self, jira_token, jira_username=None, jira_board_id=None):
         self.jira_token = jira_token
         self.jira = JIRA(JIRA_HOST, token_auth=self.jira_token)
-        self.backlog_filter_id = backlog_filter_id
+        self.jira_board_id = jira_board_id
+        self.backlog_filter_id = None
         if jira_username:
             self.jira_username = f"'{jira_username}'"
         else:
@@ -69,23 +71,63 @@ class JiraDataProcessor:
             sys.exit(1)
 
 
-    def fetch_boards(self, project_key):
+    def fetch_board(self, board_id):
         """
-        Fetch all boards for a given project key.
+        Fetch board details for a given board ID.
         """
         try:
-            boards = self.jira.boards(projectKeyOrID=project_key)
-            ret = []
-            for board in boards:
-                ret.append({
-                    'id': board.id,
-                    'name': board.name,
-                    'type': board.type
-                })
-            return ret
+            # no native implemenation for this in jira-python
+            board_config = self.jira._session.get(f"{JIRA_HOST}/rest/agile/1.0/board/{board_id}/configuration")
+            board_config.raise_for_status()
+            # notable:
+            # id, name, self (URL), filter.id, filter.self (URL)
+            return board_config.json()
         except JIRAError as e:
-            logger.error(f"Failed to fetch boards for project key {project_key}: {e}")
+            logger.error(f"Failed to fetch board configuration for board ID {board_id}: {e}")
             sys.exit(1)
+
+    def _extract_sprint_info(self, sprint_string):
+        """
+        Extract sprint information from a string with optional and reordered attributes.
+        """
+        patterns = {
+            'id': r'id=(\d+)[],]',
+            'rapidViewId': r'rapidViewId=(\d+)[],]',
+            'state': r'state=(\w+)[],]',
+            'name': r'name=(.*?)[],]',
+            'startDate': r'startDate=(.*?)[],]',
+            'endDate': r'endDate=(.*?)[],]',
+            'completeDate': r'completeDate=(.*?)[],]',
+            'activatedDate': r'activatedDate=(.*?)[],]',
+            'sequence': r'sequence=(\d+)[],]',
+            'goal': r'goal=(.*?)[],]',
+            'synced': r'synced=(\w+)[],]',
+            'autoStartStop': r'autoStartStop=(\w+)[],]',
+            'incompleteIssuesDestinationId': r'incompleteIssuesDestinationId=(-?\d+)[],]'
+        }
+
+        sprint_info = {}
+        for key, pattern in patterns.items():
+            match = re.search(pattern, sprint_string)
+            if match:
+                sprint_info[key] = match.group(1)
+
+        return sprint_info
+
+    def _extract_sprint(self, issue):
+        """
+        Extract sprint information from the issue.
+        """
+        if hasattr(issue.fields, 'customfield_12310940'):
+            sprint_strings = issue.fields.customfield_12310940
+            if not sprint_strings:
+                return []
+            sprint_info = [self._extract_sprint_info(sprint_string) for sprint_string in sprint_strings]
+            if sprint_info:
+                return sprint_info
+            return []
+        else:
+            return []
 
 
     def _process_issues(self, issues):
@@ -96,11 +138,12 @@ class JiraDataProcessor:
         for issue in issues:
             processed_issues.append({
                 'key': issue.key,
+                'url': f"{JIRA_HOST}/browse/{issue.key}",
                 'summary': issue.fields.summary,
                 'assignee': issue.fields.assignee.displayName if issue.fields.assignee else "None",
                 'description': issue.fields.description,
                 'status': issue.fields.status.name,
-                'sprint': issue.fields.customfield_12310940 if hasattr(issue.fields, 'customfield_12310940') else [],
+                'sprint': self._extract_sprint(issue),
             })
         return processed_issues
 
@@ -121,6 +164,13 @@ class JiraDataProcessor:
         """
         Fetch issues for the backlog using a specific Jira filter ID and process them.
         """
+        if not self.backlog_filter_id:
+            board_data = self.fetch_board(self.jira_board_id)
+            self.backlog_filter_id = board_data['filter']['id']
+
+        if not self.backlog_filter_id:
+            logger.error(f"No backlog filter ID found for board ID {self.jira_board_id}.")
+            sys.exit(1)
         jql = f"filter = {self.backlog_filter_id} and issuetype != 'EPIC' and assignee = {self.jira_username}"
         try:
             issues = self.jira.search_issues(jql_str=jql)
@@ -196,11 +246,11 @@ def main():
         logger.addHandler(handler)
         logger.propagate = False
 
-    data_processor = JiraDataProcessor(jira_token,JIRA_USERNAME, BACKLOG_FILTER_ID)
+    data_processor = JiraDataProcessor(jira_token,JIRA_USERNAME, JIRA_BOARD_ID)
 
     # Uncomment the following line to fetch boards for a specific project key
     # can be useful for debugging or future use
-    # print(json.dumps(data_processor.fetch_boards("COMPOSER"), indent=2))
+    # print(json.dumps(data_processor.fetch_board(JIRA_BOARD_ID), indent=2))
 
     # Fetch sprints for the specified board ID
     # can be useful for debugging or future use
