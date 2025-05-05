@@ -21,6 +21,8 @@ def _process(event):
     jira_user_domain = event.get("jira_user_domain", "unknown")
     jira_board_id = event.get("jira_board_id", "unknown")
 
+    current_sprint_url = event.get("jira_current_sprint_url", "unknown")
+    backlog_url = event.get("jira_backlog_url", "unknown")
     # TBD support "args" to contain two usernames (<slack_jira_user> <github_user>)
     # by default it only contains <github_user>
 
@@ -32,12 +34,10 @@ def _process(event):
 
     message = f"Happy {datetime.now().strftime('%A')}! 👋\n\n"
 
-    current_sprint_url = os.environ.get("CURRENT_SPRINT_URL")
     if current_sprint_url:
         current_sprint_url = f"<{current_sprint_url}|current sprint>"
     else:
         current_sprint_url = "current sprint"
-    backlog_url = os.environ.get("BACKLOG_URL")
 
     if backlog_url:
         backlog_url = f"<{backlog_url}|backlog>"

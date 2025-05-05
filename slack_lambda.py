@@ -47,6 +47,9 @@ If you add a username to `/{command}`, it will list you the same for another use
             jira_user_domain = os.environ.get('JIRA_USER_DOMAIN')
             jira_board_id = os.environ.get('JIRA_BOARD_ID')
 
+            jira_current_sprint_url = os.environ.get("JIRA_CURRENT_SPRINT_URL")
+            jira_backlog_url = os.environ.get("JIRA_BACKLOG_URL")
+
             message = f":waittime: I will check the PRs of *{user}* and let you know if they are linked to a Jira ticket…"
             payload = {
                 "user": user,
@@ -56,6 +59,8 @@ If you add a username to `/{command}`, it will list you the same for another use
                 "jira_token": jira_token,
                 "jira_user_domain": jira_user_domain,
                 "jira_board_id": jira_board_id,
+                "jira_current_sprint_url": jira_current_sprint_url,
+                "jira_backlog_url": jira_backlog_url,
                 "original_message": message,
                 "response_url": params.get('response_url')[0],
             }
