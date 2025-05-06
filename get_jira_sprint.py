@@ -10,6 +10,7 @@ import os
 import re
 import sys
 import json
+import time
 
 from utils import format_help_as_md, Cache
 from jira import JIRA, JIRAError
@@ -24,67 +25,118 @@ JIRA_BOARD_ID = os.getenv("JIRA_BOARD_ID")
 JIRA_USERNAME = os.getenv("JIRA_USERNAME")
 
 class JiraDataProcessor:
-    def __init__(self, jira_token, jira_username=None, jira_board_id=None):
+    def __init__(self, jira_token, jira_username=None, jira_board_id=None, jira_backlog_filter_id=None):
         self.jira_token = jira_token
         self.jira = JIRA(JIRA_HOST, token_auth=self.jira_token)
         self.jira_board_id = jira_board_id
-        self.backlog_filter_id = None
+        self.backlog_filter_id = jira_backlog_filter_id
         if jira_username:
             self.jira_username = f"'{jira_username}'"
         else:
             self.jira_username = "currentUser()"
 
 
-    def fetch_sprints(self, board_id):
+    def fetch_sprints(self, board_id, max_retries=5):
         """
         Fetch all sprints for a given board ID.
         """
-        try:
-            start_at = 0
-            max_results = 50
-            all_sprints = []
+        start_at = 0
+        max_results = 50
+        all_sprints = []
+        attempt = 0
+        while True:
+            attempt += 1
+            try:
+                while True:
+                    sprints = self.jira.sprints(board_id, startAt=start_at, maxResults=max_results)
+                    # .sprints() seems to return all sprints
+                    # so we'll filter them by BOARD_ID
+                    all_sprints.extend([sprint for sprint in sprints if getattr(sprint, 'originBoardId', None) == board_id])
 
-            while True:
-                sprints = self.jira.sprints(board_id, startAt=start_at, maxResults=max_results)
-                # .sprints() seems to return all sprints
-                # so we'll filter them by BOARD_ID
-                all_sprints.extend([sprint for sprint in sprints if getattr(sprint, 'originBoardId', None) == board_id])
+                    if len(sprints) < max_results:
+                        break
+                    start_at += max_results
 
-                if len(sprints) < max_results:
-                    break
-                start_at += max_results
+                sprints_filtered = [sprint for sprint in all_sprints if getattr(sprint, 'originBoardId', None)]
+                ret = []
+                for sprint in sprints_filtered:
+                    ret.append({
+                        'id': sprint.id,
+                        'originBoardId': sprint.originBoardId,
+                        'name': sprint.name,
+                        'state': sprint.state,
+                        'startDate': sprint.startDate,
+                        'endDate': sprint.endDate
+                    })
+                return ret
+            except JIRAError as e:
+                status = getattr(e.response, 'status_code', None)
+                # Handle rate limit (429)
+                if status == 429 and attempt <= max_retries:
+                    retry_after = e.response.headers.get("Retry-After")
+                    try:
+                        wait = max(int(retry_after),2)
+                    except (TypeError, ValueError):
+                        # Fallback to a default backoff if header missing or invalid
+                        wait = 60
+                    logger.warning(
+                        f"Rate limit exceeded (attempt {attempt}/{max_retries}). "
+                        f"Waiting {wait}s before retrying..."
+                    )
+                    time.sleep(wait)
+                    continue
 
-            sprints_filtered = [sprint for sprint in all_sprints if getattr(sprint, 'originBoardId', None)]
-            ret = []
-            for sprint in sprints_filtered:
-                ret.append({
-                    'id': sprint.id,
-                    'originBoardId': sprint.originBoardId,
-                    'name': sprint.name,
-                    'state': sprint.state,
-                    'startDate': sprint.startDate,
-                    'endDate': sprint.endDate
-                })
-            return ret
-        except JIRAError as e:
-            logger.error(f"Failed to fetch sprints for board ID {board_id}: {e}")
-            sys.exit(1)
+                # If we've retried too many times or it's a different error:
+                logger.error(
+                    f"Failed to fetch sprints for board ID {board_id} "
+                    f"(status={status}) after {attempt} attempts: {e}"
+                )
+                raise e
 
 
-    def fetch_board(self, board_id):
+    def fetch_board(self, board_id, max_retries=5):
         """
-        Fetch board details for a given board ID.
+        Fetch board details for a given board ID, with retry-on-429 handling.
+
+        :param board_id: ID of the board to fetch.
+        :param max_retries: Maximum number of times to retry after 429 responses.
+        :return: Parsed JSON configuration of the board.
+        :raises SystemExit: If non-429 error occurs or retries are exhausted.
         """
-        try:
-            # no native implemenation for this in jira-python
-            board_config = self.jira._session.get(f"{JIRA_HOST}/rest/agile/1.0/board/{board_id}/configuration")
-            board_config.raise_for_status()
-            # notable:
-            # id, name, self (URL), filter.id, filter.self (URL)
-            return board_config.json()
-        except JIRAError as e:
-            logger.error(f"Failed to fetch board configuration for board ID {board_id}: {e}")
-            sys.exit(1)
+        url = f"{JIRA_HOST}/rest/agile/1.0/board/{board_id}/configuration"
+        attempt = 0
+
+        while True:
+            attempt += 1
+            try:
+                resp = self.jira._session.get(url)
+                # raise_for_status will raise HTTPError for 4xx/5xx
+                resp.raise_for_status()
+                return resp.json()
+
+            except JIRAError as e:
+                status = getattr(e.response, 'status_code', None)
+                # Handle rate limit (429)
+                if status == 429 and attempt <= max_retries:
+                    retry_after = e.response.headers.get("Retry-After")
+                    try:
+                        wait = max(int(retry_after),2)
+                    except (TypeError, ValueError):
+                        # Fallback to a default backoff if header missing or invalid
+                        wait = 60
+                    logger.warning(
+                        f"Rate limit exceeded (attempt {attempt}/{max_retries}). "
+                        f"Waiting {wait}s before retrying..."
+                    )
+                    time.sleep(wait)
+                    continue
+
+                # If we've retried too many times or it's a different error:
+                logger.error(
+                    f"Failed to fetch board configuration for board ID {board_id} "
+                    f"(status={status}) after {attempt} attempts: {e}"
+                )
+                sys.exit(1)
 
     def _extract_sprint_info(self, sprint_string):
         """
@@ -156,11 +208,11 @@ class JiraDataProcessor:
             issues = self.jira.search_issues(jql_str=jql)
         except JIRAError as e:
             logger.error(f"Failed to fetch issues for the current sprint: {e}")
-            sys.exit(1)
+            raise e
         return self._process_issues(issues)
 
     
-    def fetch_current_backlog_issues(self, exclude_resolved=True):
+    def fetch_current_backlog_issues(self, exclude_resolved=True, max_retries=5):
         """
         Fetch issues for the backlog using a specific Jira filter ID and process them.
         """
@@ -172,30 +224,48 @@ class JiraDataProcessor:
             logger.error(f"No backlog filter ID found for board ID {self.jira_board_id}.")
             sys.exit(1)
         jql = f"filter = {self.backlog_filter_id} and issuetype != 'EPIC' and assignee = {self.jira_username}"
-        try:
-            issues = self.jira.search_issues(jql_str=jql)
-            # optionally exclude resolved issues
-            # some inconsistencies can happen in jira we'll just filter them out
-            issues_filtered = [i for i in issues if not i.fields.resolution] if exclude_resolved else issues
-            issues_filtered = [i for i in issues_filtered if i.fields.status.name.lower() != 'closed'] if exclude_resolved else issues_filtered
-            issues_filtered = [i for i in issues_filtered if i.fields.status.name.lower() != 'resolved'] if exclude_resolved else issues_filtered
-            issues_filtered = [i for i in issues_filtered if i.fields.status.name.lower() != 'release pending'] if exclude_resolved else issues_filtered
+        attempt = 0
+        while True:
+            attempt += 1
+            try:
+                issues = self.jira.search_issues(jql_str=jql)
+                # optionally exclude resolved issues
+                # some inconsistencies can happen in jira we'll just filter them out
+                issues_filtered = [i for i in issues if not i.fields.resolution] if exclude_resolved else issues
+                issues_filtered = [i for i in issues_filtered if i.fields.status.name.lower() != 'closed'] if exclude_resolved else issues_filtered
+                issues_filtered = [i for i in issues_filtered if i.fields.status.name.lower() != 'resolved'] if exclude_resolved else issues_filtered
+                issues_filtered = [i for i in issues_filtered if i.fields.status.name.lower() != 'release pending'] if exclude_resolved else issues_filtered
 
-            # filter out issues that are in an "ACTIVE" sprint
-            ret = []
-            for i in issues_filtered:
-                # ugly workaround to check if the issue is in an active sprint
-                # as customfield_12310940 seems to be a string, not an object
-                # TBD: proper implementation to get an object for the sprint
-                if hasattr(i.fields, 'customfield_12310940') and \
-                    i.fields.customfield_12310940 and \
-                    any(["state=ACTIVE" in sprint for sprint in i.fields.customfield_12310940]):
+                # filter out issues that are in an "ACTIVE" sprint
+                ret = []
+                for i in issues_filtered:
+                    # ugly workaround to check if the issue is in an active sprint
+                    # as customfield_12310940 seems to be a string, not an object
+                    # TBD: proper implementation to get an object for the sprint
+                    if hasattr(i.fields, 'customfield_12310940') and \
+                        i.fields.customfield_12310940 and \
+                        any(["state=ACTIVE" in sprint for sprint in i.fields.customfield_12310940]):
+                        continue
+                    ret.append(i)
+                return self._process_issues(ret)
+            except JIRAError as e:
+                status = getattr(e.response, 'status_code', None)
+                if status == 429 and attempt <= max_retries:
+                    retry_after = e.response.headers.get("Retry-After")
+                    try:
+                        wait = max(int(retry_after),2)
+                    except (TypeError, ValueError):
+                        wait = 60
+                    logger.warning(
+                        f"Rate limit exceeded (attempt {attempt}/{max_retries}). "
+                        f"Waiting {wait}s before retrying..."
+                    )
+                    time.sleep(wait)
                     continue
-                ret.append(i)
-        except JIRAError as e:
-            logger.error(f"Failed to fetch backlog issues for filter ID {self.backlog_filter_id}: {e}")
-            sys.exit(1)
-        return self._process_issues(ret)
+                logger.error(
+                    f"Failed to fetch issues for the backlog (attempt {attempt}/{max_retries}): {e}"
+                )
+                raise e
 
 
     def get_issue_overview(self):
