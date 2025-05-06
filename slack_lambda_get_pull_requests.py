@@ -39,8 +39,6 @@ def _process(event):
     jira_data_processor = JiraDataProcessor(jira_token, f"{user}@{jira_user_domain}", jira_board_id)
     processed_issues = jira_data_processor.get_issue_overview()
 
-    message = f"Happy {datetime.now().strftime('%A')}! 👋\n\n"
-
     if current_sprint_url:
         current_sprint_url = f"<{current_sprint_url}|current sprint>"
     else:
@@ -91,35 +89,38 @@ def _process(event):
     for sprint_issue in sorted(normal_sprint_issue_items, key=lambda x: (x["key"])):
         normal_sprint_issues.append(f" • <{sprint_issue['url']}|{sprint_issue['key']}>: {sprint_issue['summary']}")
 
+    message = f"Happy {datetime.now().strftime('%A')}! 👋\n\n"
+
     message += f"*Work from your {current_sprint_url}* 🟢\n"
 
     if best_practice_issues:
         message += "    Best practice:\n"
         message += "\n".join(best_practice_issues)
-        message += "\n"
+        message += "\n\n"
     if normal_sprint_issues:
         message += "    No implementation linked yet:\n"
         message += "\n".join(normal_sprint_issues)
-        message += "\n"
+        message += "\n\n"
     if not best_practice_issues and not normal_sprint_issues:
-        message += "    :hanging-sloth: You don't have any issues in the current sprint\n"
-    message += "\n"
+        message += "    :hanging-sloth: You don't have any issues in the current sprint\n\n"
 
     if linked_backlog or linked_non_backlog:
         message += "*Other work* 🟡\n"
         if linked_backlog:
             message += f"    Already started implementation from {backlog_url}:\n"
             message += "\n".join(linked_backlog)
-            message += "\n"
+            message += "\n\n"
         if linked_non_backlog:
             message += f"    Implementation started but not in our {backlog_url}:\n"
             message += "\n".join(linked_non_backlog)
-            message += "\n"
-        message += "\n"
+            message += "\n\n"
+
         # remaining "backlog non linked" issues are not printed
         # those are just all others
     # else section "other work" is skipped
 
+
+    message += f"*{len(pr_data_processor.without_jira)} of {len(pr_data_processor.with_jira) + len(pr_data_processor.without_jira)} PRs not tracked in Jira* 🟠\n"
     # Format the message for PRs without Jira keys
     if pr_data_processor.without_jira:
         pr_list = []
@@ -136,8 +137,8 @@ def _process(event):
         else:
             pr_message = "    :party-blob: All your PRs are best practice."
 
-    message += f"*{len(pr_data_processor.without_jira)} of {len(pr_data_processor.with_jira) + len(pr_data_processor.without_jira)} PRs not tracked in Jira* 🟠\n"
     message += f"{pr_message}"
+
     return message
 
 
