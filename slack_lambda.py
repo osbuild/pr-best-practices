@@ -14,6 +14,8 @@ import hashlib
 import urllib.parse
 import base64
 
+from utils import UserMap
+
 lambda_client = boto3.client('lambda')
 
 def _handle_request(params, staging=False):
@@ -41,33 +43,33 @@ linked to a Jira ticket.
 Please add your *GitHub username* after `/{command}` if it's not the same as the slack username.
 """
         else:
-            args = text if text else user
+            user_map = UserMap(os.environ.get('USER_MAP_FILE', 'usermap.yaml'))
+            args = text if text else user_map.slack2github(user)
+            jira_user = user_map.slack2jira(user)
             arg_array = args.split(" ")
             if len(arg_array) == 2:
                 args = arg_array[0]
-                user = arg_array[1]
+                jira_user = arg_array[1]
             elif len(arg_array) > 2:
-                return ":stop: There are too many arguments. Please use the format: `/pr2jira [<github_user>|<github_user> <jira_user_without_domain>]`"
+                return ":stop: There are too many arguments. Please use the format: `/pr2jira [<github_user>|<github_user> <jira_user>]`"
 
             if not message:
                 github_token = os.environ.get('GITHUB_TOKEN')
                 github_organization = os.environ.get('GITHUB_ORGANIZATION')
 
                 jira_token = os.environ.get('JIRA_TOKEN')
-                jira_user_domain = os.environ.get('JIRA_USER_DOMAIN')
                 jira_board_id = os.environ.get('JIRA_BOARD_ID')
 
                 jira_current_sprint_url = os.environ.get("JIRA_CURRENT_SPRINT_URL")
                 jira_backlog_url = os.environ.get("JIRA_BACKLOG_URL")
 
-                message = f":waittime: I will check the PRs of `{args}` correlate with issues from `{user}@{jira_user_domain}` and let you know if all is good…"
+                message = f":waittime: I will check the PRs of `{args}` correlate with issues from `{jira_user}` and let you know if all is good…"
                 payload = {
-                    "user": user,
+                    "jira_user": jira_user,
                     "args": args,
                     "github_organization": github_organization,
                     "github_token": github_token,
                     "jira_token": jira_token,
-                    "jira_user_domain": jira_user_domain,
                     "jira_board_id": jira_board_id,
                     "jira_current_sprint_url": jira_current_sprint_url,
                     "jira_backlog_url": jira_backlog_url,

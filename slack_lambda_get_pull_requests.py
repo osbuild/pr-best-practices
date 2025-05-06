@@ -11,14 +11,13 @@ logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
 
 def _process(event):
-    user = event.get("user", "unknown")
+    jira_user = event.get("jira_user", "unknown")
     args = event.get("args", "unknown")
 
     github_organization = event.get("github_organization", "unknown")
     github_token = event.get("github_token", "unknown")
 
     jira_token = event.get("jira_token", "unknown")
-    jira_user_domain = event.get("jira_user_domain", "unknown")
     jira_board_id = event.get("jira_board_id", "unknown")
 
     current_sprint_url = event.get("jira_current_sprint_url")
@@ -29,14 +28,14 @@ def _process(event):
     arg_array = args.split(" ")
     if len(arg_array) == 2:
         args = arg_array[0]
-        user = arg_array[1]
+        jira_user = arg_array[1]
     elif len(arg_array) > 2:
-        return ":stop: There are too many arguments. Please use the format: `/pr2jira [<github_user>|<github_user> <jira_user_without_domain>]`"
+        return ":stop: There are too many arguments. Please use the format: `/pr2jira [<github_user>|<github_user> <jira_user>]`"
 
     pr_data_processor = DataProcessor(github_organization, None, args, True, github_token)
     pr_data_processor.process()
 
-    jira_data_processor = JiraDataProcessor(jira_token, f"{user}@{jira_user_domain}", jira_board_id)
+    jira_data_processor = JiraDataProcessor(jira_token, f"{jira_user}", jira_board_id)
     processed_issues = jira_data_processor.get_issue_overview()
 
     if current_sprint_url:
@@ -133,7 +132,7 @@ def _process(event):
         pr_message += "\n\n    :cat_typing: Please add a Jira key to your PR title e.g by using `/jira-epic …` described <https://github.com/osbuild/pr-best-practices?tab=readme-ov-file#features|here>."
     else:
         if len(pr_data_processor.with_jira) == 0:
-            pr_message = f"    *{user}* is not working on any PRs at the moment? :confusedoggo:"
+            pr_message = f"    *{jira_user}* is not working on any PRs at the moment? :confusedoggo:"
         else:
             pr_message = "    :party-blob: All your PRs are best practice."
 

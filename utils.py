@@ -108,35 +108,35 @@ class UserMap:
     def __init__(self, user_map_file: str):
         try:
             with open(user_map_file, 'r') as yaml_file:
-                self.user_map = yaml.safe_load(yaml_file)
+                self.user_map = yaml.safe_load(yaml_file)['assignees']
                 # consistency check
-                for entry in self.user_map['assignees']:
-                    if not getattr(entry, 'github'):
+                for entry in self.user_map:
+                    if not entry.get('github'):
                         raise ValueError(f"Missing 'github' key in entry: {entry}")
-                    if not getattr(entry, 'jira'):
+                    if not entry.get('jira'):
                         raise ValueError(f"Missing 'jira' key in entry: {entry}")
                     # slack can be missing
         except Exception as e:
             logging.error(f"Error loading YAML file '{user_map_file}': {e}")
             raise e
 
-    def _get_entry(self, user_name: str, tool: str) -> Any:
+    def _get_value(self, entry: dict, tool: str) -> Any:
         """
         Get the entry for a user from the user map.
         """
-        ret = getattr(self.user_map, tool)
+        ret = entry.get(tool)
         if not ret and tool == 'slack':
             # slack can be derived from jira
             # remove the "@" and domain if present at the end
-            ret = getattr(self.user_map, 'jira')
+            ret = entry.get('jira')
             if ret:
                 ret = re.sub(r'@.*$', '', ret)
         return ret
 
     def _get_user(self, user_name: str, from_tool: str, to_tool: str) -> str:
-        for entry in self.user_map['assignees']:
-            if self._get_entry(user_name, from_tool) == user_name:
-                ret = self._get_entry(user_name, to_tool)
+        for entry in self.user_map:
+            if self._get_value(entry, from_tool) == user_name:
+                ret = self._get_value(entry, to_tool)
                 return ret
         return None
 

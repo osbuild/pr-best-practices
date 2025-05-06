@@ -64,12 +64,11 @@ class TestSlackLambdaGetPullRequests(unittest.TestCase):
 
     def test_process_with_env_variables(self):
         event = {
-            "user": os.environ["SLACK_TEST_USERNAME"],
+            "jira_user": os.environ["JIRA_TEST_USERNAME"],
             "args": os.environ["SLACK_COMMAND_ARGS"],
             "github_organization": os.environ["GITHUB_ORGANIZATION"],
             "github_token": os.environ["GITHUB_TOKEN"],
             "jira_token": os.environ["JIRA_TOKEN"],
-            "jira_user_domain": os.environ["JIRA_USER_DOMAIN"],
             "jira_board_id": os.environ["JIRA_BOARD_ID"],
             "response_url": "http://mock_response_url"
         }

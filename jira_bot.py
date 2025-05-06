@@ -3,7 +3,6 @@
 import argparse
 import os
 import sys
-import yaml
 
 from jira import JIRA
 from utils import UserMap, format_help_as_md
