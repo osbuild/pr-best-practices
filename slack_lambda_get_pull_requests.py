@@ -24,12 +24,14 @@ def _process(event):
     current_sprint_url = event.get("jira_current_sprint_url")
     backlog_url = event.get("jira_backlog_url")
 
+    # the functionality is duplicated here (alos in slack_lambda.py)
+    # for the testcases
     arg_array = args.split(" ")
     if len(arg_array) == 2:
         args = arg_array[0]
         user = arg_array[1]
     elif len(arg_array) > 2:
-        return "There are too many arguments. Please use the format: `/pr2jira <github_user> <jira_user_without_domain>` or `/pr2jira <github_user>`"
+        return "There are too many arguments. Please use the format: `/pr2jira <github_user>` or `/pr2jira <github_user> <jira_user_without_domain>`"
 
     pr_data_processor = DataProcessor(github_organization, None, args, True, github_token)
     pr_data_processor.process()

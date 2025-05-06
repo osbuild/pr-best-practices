@@ -42,11 +42,13 @@ Please add your *GitHub username* after `/{command}`.
 """
         else:
             arg_array = text.split(" ")
-            if len(arg_array) == 2:
+            if len(arg_array) == 1:
+                args = arg_array[0]
+            elif len(arg_array) == 2:
                 args = arg_array[0]
                 user = arg_array[1]
-            elif len(arg_array) > 2:
-                message = ":stop: There are too many arguments. Please use the format: `/pr2jira <github_user> <jira_user_without_domain>` or `/pr2jira <github_user>`"
+            else:
+                message = ":stop: Please use the format: `/pr2jira <github_user>` or `/pr2jira <github_user> <jira_user_without_domain>`"
 
             if not message:
                 github_token = os.environ.get('GITHUB_TOKEN')
