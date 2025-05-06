@@ -9,6 +9,9 @@ truststore
 openai
 transformers
 nltk
+# dependency for nltk
+# which is not installed for some reason
+pysqlite3
 # maybe needed for streaming
 tiktoken
 # maybe not needed

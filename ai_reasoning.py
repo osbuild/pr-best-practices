@@ -13,7 +13,6 @@ import argparse
 import threading
 import requests
 import json
-import nltk
 import numpy as np
 import os
 import sys
@@ -22,7 +21,6 @@ import urllib.parse
 
 import concurrent.futures
 
-from sklearn.metrics.pairwise import cosine_similarity
 from utils import Cache, format_help_as_md
 
 doc_epilog = ""
@@ -612,6 +610,8 @@ def get_suggestions(json_input_file, rag_top_k, rag_threshold, threads):
     global ctx_len
     # doing import LATE here, because it would take too long just for the "help"
     print("Loading sentence transformers...")
+    import nltk
+    from sklearn.metrics.pairwise import cosine_similarity
     global SentenceTransformer
     from sentence_transformers import SentenceTransformer
     global AutoTokenizer
