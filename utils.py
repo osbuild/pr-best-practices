@@ -1,3 +1,4 @@
+import logging
 import pickle
 import os
 import re
@@ -5,6 +6,10 @@ import threading
 
 from typing import Any
 from collections.abc import Mapping, Callable
+
+import yaml
+
+logger = logging.getLogger(__name__)
 
 def format_help_as_md(parser):
     help_text = parser.format_help()
@@ -93,3 +98,59 @@ class Cache:
                 cache_key_lock.release()
 
         return result
+
+class UserMap:
+    """
+    A class to map user IDs between tools.
+    This class is not runtime optimized as it is only used for a few lookups.
+    """
+
+    def __init__(self, user_map_file: str):
+        try:
+            with open(user_map_file, 'r') as yaml_file:
+                self.user_map = yaml.safe_load(yaml_file)
+                # consistency check
+                for entry in self.user_map['assignees']:
+                    if not getattr(entry, 'github'):
+                        raise ValueError(f"Missing 'github' key in entry: {entry}")
+                    if not getattr(entry, 'jira'):
+                        raise ValueError(f"Missing 'jira' key in entry: {entry}")
+                    # slack can be missing
+        except Exception as e:
+            logging.error(f"Error loading YAML file '{user_map_file}': {e}")
+            raise e
+
+    def _get_entry(self, user_name: str, tool: str) -> Any:
+        """
+        Get the entry for a user from the user map.
+        """
+        ret = getattr(self.user_map, tool)
+        if not ret and tool == 'slack':
+            # slack can be derived from jira
+            # remove the "@" and domain if present at the end
+            ret = getattr(self.user_map, 'jira')
+            if ret:
+                ret = re.sub(r'@.*$', '', ret)
+        return ret
+
+    def _get_user(self, user_name: str, from_tool: str, to_tool: str) -> str:
+        for entry in self.user_map['assignees']:
+            if self._get_entry(user_name, from_tool) == user_name:
+                ret = self._get_entry(user_name, to_tool)
+                return ret
+        return None
+
+    def jira2github(self, user_name: str) -> str:
+        return self._get_user(user_name, 'jira', 'github')
+    def jira2slack(self, user_name: str) -> str:
+        return self._get_user(user_name, 'jira', 'slack')
+
+    def github2jira(self, user_name: str) -> str:
+        return self._get_user(user_name, 'github', 'jira')
+    def github2slack(self, user_name: str) -> str:
+        return self._get_user(user_name, 'github', 'slack')
+
+    def slack2jira(self, user_name: str) -> str:
+        return self._get_user(user_name, 'slack', 'jira')
+    def slack2github(self, user_name: str) -> str:
+        return self._get_user(user_name, 'slack', 'github')
