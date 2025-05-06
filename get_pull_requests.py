@@ -298,9 +298,11 @@ class DataProcessor:
             if item['jira_keys'] and len(item['jira_keys']) > 0:
                 # make the first one the "main" key
                 item['jira_key'] = item['jira_keys'][0]
+                item['jira_url'] = f"{JIRA_HOST}/browse/{item['jira_key']}"
                 self.with_jira.append(item)
             else:
                 item['jira_key'] = None
+                item['jira_url'] = None
                 self.without_jira.append(item)
 
         if self.only_repos:

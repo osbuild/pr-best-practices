@@ -21,10 +21,15 @@ def _process(event):
     jira_user_domain = event.get("jira_user_domain", "unknown")
     jira_board_id = event.get("jira_board_id", "unknown")
 
-    current_sprint_url = event.get("jira_current_sprint_url", "unknown")
-    backlog_url = event.get("jira_backlog_url", "unknown")
-    # TBD support "args" to contain two usernames (<slack_jira_user> <github_user>)
-    # by default it only contains <github_user>
+    current_sprint_url = event.get("jira_current_sprint_url")
+    backlog_url = event.get("jira_backlog_url")
+
+    arg_array = args.split(" ")
+    if len(arg_array) == 2:
+        args = arg_array[0]
+        user = arg_array[1]
+    elif len(arg_array) > 2:
+        return "There are too many arguments. Please use the format: `/pr2jira <github_user> <jira_user_without_domain>` or `/pr2jira <github_user>`"
 
     pr_data_processor = DataProcessor(github_organization, None, args, True, github_token)
     pr_data_processor.process()
@@ -44,88 +49,79 @@ def _process(event):
     else:
         backlog_url = "backlog"
 
-    # collect PRs not linked to sprint issues
-    with_jira_for_backlog = []
+    best_practice_issues = []
+    # copy current_sprint issues to normal_sprint_issues_items
+    # to be transformed into strings later
+    normal_sprint_issue_items = processed_issues["current_sprint"].copy()
+    linked_backlog = []
+    linked_non_backlog = []
+    for pr in sorted(pr_data_processor.with_jira, key=lambda x: (x["repo"], x["number"])):
+        matched = False
+        pr_title_link = f"<{pr['html_url']}|{pr['title']}>"
+        pr_info = f" • {pr_title_link}"
+        for sprint_issue in processed_issues["current_sprint"]:
+            if pr["jira_key"] == sprint_issue["key"]:
+                jira_link = f"<{sprint_issue['url']}|{sprint_issue['key']}>"
+                best_practice_issues.append(f"{pr_info} ({jira_link}) - {sprint_issue['summary']}")
+                normal_sprint_issue_items.remove(sprint_issue)
+                matched = True
+                break
+        if matched:
+            continue
+
+        for backlog_issue in processed_issues["backlog"]:
+            if pr["jira_key"] == backlog_issue["key"]:
+                jira_link = f"<{backlog_issue['url']}|{backlog_issue['key']}>"
+                linked_backlog.append(f"{pr_info} ({jira_link}) - {backlog_issue['summary']}")
+                matched = True
+                break
+        if matched:
+            continue
+
+        if pr["jira_url"]:
+            jira_link = f"<{pr['jira_url']}|{pr['jira_key']}>"
+        else:
+            # should not happen, but just in case
+            jira_link = f"{pr['jira_key']}"
+        linked_non_backlog.append(f"{pr_info} ({jira_link})")
+
+    normal_sprint_issues = []
+    for sprint_issue in sorted(normal_sprint_issue_items, key=lambda x: (x["key"])):
+        normal_sprint_issues.append(f" • <{sprint_issue['url']}|{sprint_issue['key']}>: {sprint_issue['summary']}")
 
     message += f"*Work from your {current_sprint_url}* 🟢\n"
-
-    best_practice_issues = []
-    normal_sprint_issues = []
-    for sprint_issue in processed_issues["current_sprint"]:
-        found = False
-        for pr in pr_data_processor.with_jira:
-            if pr["jira_key"] == sprint_issue["key"]:
-                pr_title_link = f"<{pr['html_url']}|{pr['title']}>"
-                jira_link = f"<{sprint_issue['url']}|{sprint_issue['key']} - {sprint_issue['summary']}>"
-                entry = (
-                    f" • {pr['repo']}: {pr_title_link} "
-                    f"({jira_link})"
-                )
-                best_practice_issues.append(entry)
-                found = True
-            else:
-                with_jira_for_backlog.append(pr)
-        if not found:
-            entry = f" • <{sprint_issue['url']}|{sprint_issue['key']}>: {sprint_issue['summary']}"
-            normal_sprint_issues.append(entry)
 
     if best_practice_issues:
         message += "    Best practice:\n"
         message += "\n".join(best_practice_issues)
+        message += "\n"
     if normal_sprint_issues:
         message += "    No implementation linked yet:\n"
         message += "\n".join(normal_sprint_issues)
+        message += "\n"
     if not best_practice_issues and not normal_sprint_issues:
-        message += "    :hanging-sloth: You don't have any issues in the current sprint"
-    message += "\n\n"
+        message += "    :hanging-sloth: You don't have any issues in the current sprint\n"
+    message += "\n"
 
-    backlog_linked = []
-    linked_non_backlog = []
-    for backlog_issue in processed_issues["backlog"]:
-        found = False
-        for pr in with_jira_for_backlog:
-            if pr["jira_key"] == backlog_issue["key"]:
-                pr_title_link = f"<{pr['html_url']}|{pr['title']}>"
-                jira_link = f"<{backlog_issue['url']}|{backlog_issue['key']} - {backlog_issue}>"
-                entry = (
-                    f" • {pr['repo']}: {pr_title_link} "
-                    f"({jira_link})"
-                )
-                backlog_linked.append(entry)
-                found = True
-            else:
-                pr_title_link = f"<{pr['html_url']}|{pr['title']}>"
-                jira_link = f"<{backlog_issue['url']}|{backlog_issue['key']} - {backlog_issue}>"
-                entry = (
-                    f" • {pr['repo']}: {pr_title_link} "
-                    f"({jira_link})"
-                )
-                linked_non_backlog.append(entry)
-        if not found:
-            pass
-            # skip printings non-linked backlog issues for now
-            # probably not needed
-
-    if backlog_linked or linked_non_backlog:
+    if linked_backlog or linked_non_backlog:
         message += "*Other work* 🟡\n"
-        if backlog_linked:
+        if linked_backlog:
             message += f"    Already started implementation from {backlog_url}:\n"
-            message += "\n".join(backlog_linked)
+            message += "\n".join(linked_backlog)
         if linked_non_backlog:
             message += f"    Implementation started but not in our {backlog_url}:\n"
             message += "\n".join(linked_non_backlog)
         message += "\n\n"
+        # remaining "backlog non linked" issues are not printed
+        # those are just all others
     # else section "other work" is skipped
 
     # Format the message for PRs without Jira keys
     if pr_data_processor.without_jira:
         pr_list = []
-        for pr in pr_data_processor.without_jira:
+        for pr in sorted(pr_data_processor.without_jira, key=lambda x: x["repo"]):
             pr_title_link = f"<{pr['html_url']}|{pr['title']}>"
-            entry = (
-                f" • {pr['repo']}: {pr_title_link} "
-                f"(+{pr['additions']}/-{pr['deletions']})"
-            )
+            entry = f" • {pr['repo']}: {pr_title_link} "
             pr_list.append(entry)
         pr_message = "\n".join(pr_list)
         # indenting does not work in slack, so we'll use some spaces for now

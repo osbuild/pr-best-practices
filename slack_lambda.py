@@ -28,49 +28,56 @@ def _handle_request(params, staging=False):
             "body": {"error": "Missing command"}
         }
     command = command[0].lstrip("/").lower()
+    message = None
     if staging:
         command = command.removesuffix("_staging")
     if command == "hi":
         # Prepare the response message
         message = f"👋 {command} {user}, nice to meet you! I'm healthy, up & running."
     elif command == "pr2jira":
-        if text.lower() == "help":
+        if text.lower() == "help" or len(text) == 0:
             message = f"""The command `/{command}` can show you, if your <https://github.com/pulls|PRs in Github> are 
 linked to a Jira ticket.
-If you add a username to `/{command}`, it will list you the same for another user, so you can nag them :meow_halo:.
+Please add your *GitHub username* after `/{command}`.
 """
         else:
-            args = text if text else user
+            arg_array = text.split(" ")
+            if len(arg_array) == 2:
+                args = arg_array[0]
+                user = arg_array[1]
+            elif len(arg_array) > 2:
+                message = ":stop: There are too many arguments. Please use the format: `/pr2jira <github_user> <jira_user_without_domain>` or `/pr2jira <github_user>`"
 
-            github_token = os.environ.get('GITHUB_TOKEN')
-            github_organization = os.environ.get('GITHUB_ORGANIZATION')
+            if not message:
+                github_token = os.environ.get('GITHUB_TOKEN')
+                github_organization = os.environ.get('GITHUB_ORGANIZATION')
 
-            jira_token = os.environ.get('JIRA_TOKEN')
-            jira_user_domain = os.environ.get('JIRA_USER_DOMAIN')
-            jira_board_id = os.environ.get('JIRA_BOARD_ID')
+                jira_token = os.environ.get('JIRA_TOKEN')
+                jira_user_domain = os.environ.get('JIRA_USER_DOMAIN')
+                jira_board_id = os.environ.get('JIRA_BOARD_ID')
 
-            jira_current_sprint_url = os.environ.get("JIRA_CURRENT_SPRINT_URL")
-            jira_backlog_url = os.environ.get("JIRA_BACKLOG_URL")
+                jira_current_sprint_url = os.environ.get("JIRA_CURRENT_SPRINT_URL")
+                jira_backlog_url = os.environ.get("JIRA_BACKLOG_URL")
 
-            message = f":waittime: I will check the PRs of *{args}*, check issues from {user}@{jira_user_domain} and let you know if all is good…"
-            payload = {
-                "user": user,
-                "args": args,
-                "github_organization": github_organization,
-                "github_token": github_token,
-                "jira_token": jira_token,
-                "jira_user_domain": jira_user_domain,
-                "jira_board_id": jira_board_id,
-                "jira_current_sprint_url": jira_current_sprint_url,
-                "jira_backlog_url": jira_backlog_url,
-                "original_message": message,
-                "response_url": params.get('response_url')[0],
-            }
-            lambda_client.invoke(
-                    FunctionName='schutzbot_command_get_pull_requests' if not staging else 'schutzbot_command_staging_get_pull_requests',
-                    InvocationType='Event',  # async invoke
-                    Payload=json.dumps(payload)
-            )
+                message = f":waittime: I will check the PRs of *{args}* correlate with issues from {user}@{jira_user_domain} and let you know if all is good…"
+                payload = {
+                    "user": user,
+                    "args": args,
+                    "github_organization": github_organization,
+                    "github_token": github_token,
+                    "jira_token": jira_token,
+                    "jira_user_domain": jira_user_domain,
+                    "jira_board_id": jira_board_id,
+                    "jira_current_sprint_url": jira_current_sprint_url,
+                    "jira_backlog_url": jira_backlog_url,
+                    "original_message": message,
+                    "response_url": params.get('response_url')[0],
+                }
+                lambda_client.invoke(
+                        FunctionName='schutzbot_command_get_pull_requests' if not staging else 'schutzbot_command_staging_get_pull_requests',
+                        InvocationType='Event',  # async invoke
+                        Payload=json.dumps(payload)
+                )
 
     else:
         message = f":stop: Hello {user}. The command '{command}' + '{text}' is not yet implemented. You are ahead of time!"
