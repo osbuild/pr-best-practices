@@ -61,7 +61,7 @@ Please add your *GitHub username* after `/{command}`.
                 jira_current_sprint_url = os.environ.get("JIRA_CURRENT_SPRINT_URL")
                 jira_backlog_url = os.environ.get("JIRA_BACKLOG_URL")
 
-                message = f":waittime: I will check the PRs of *{args}* correlate with issues from {user}@{jira_user_domain} and let you know if all is good…"
+                message = f":waittime: I will check the PRs of `{args}` correlate with issues from `{user}@{jira_user_domain}` and let you know if all is good…"
                 payload = {
                     "user": user,
                     "args": args,

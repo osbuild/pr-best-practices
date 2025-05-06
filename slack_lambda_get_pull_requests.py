@@ -64,7 +64,7 @@ def _process(event):
         for sprint_issue in processed_issues["current_sprint"]:
             if pr["jira_key"] == sprint_issue["key"]:
                 jira_link = f"<{sprint_issue['url']}|{sprint_issue['key']}>"
-                best_practice_issues.append(f"{pr_info} ({jira_link}) - {sprint_issue['summary']}")
+                best_practice_issues.append(f"{pr_info}\n    {jira_link} - {sprint_issue['summary']}")
                 normal_sprint_issue_items.remove(sprint_issue)
                 matched = True
                 break
@@ -74,7 +74,7 @@ def _process(event):
         for backlog_issue in processed_issues["backlog"]:
             if pr["jira_key"] == backlog_issue["key"]:
                 jira_link = f"<{backlog_issue['url']}|{backlog_issue['key']}>"
-                linked_backlog.append(f"{pr_info} ({jira_link}) - {backlog_issue['summary']}")
+                linked_backlog.append(f"{pr_info}\n    {jira_link} - {backlog_issue['summary']}")
                 matched = True
                 break
         if matched:
@@ -110,10 +110,12 @@ def _process(event):
         if linked_backlog:
             message += f"    Already started implementation from {backlog_url}:\n"
             message += "\n".join(linked_backlog)
+            message += "\n"
         if linked_non_backlog:
             message += f"    Implementation started but not in our {backlog_url}:\n"
             message += "\n".join(linked_non_backlog)
-        message += "\n\n"
+            message += "\n"
+        message += "\n"
         # remaining "backlog non linked" issues are not printed
         # those are just all others
     # else section "other work" is skipped
