@@ -35,20 +35,19 @@ def _handle_request(params, staging=False):
         # Prepare the response message
         message = f"👋 {command} {user}, nice to meet you! I'm healthy, up & running."
     elif command == "pr2jira":
-        if text.lower() == "help" or len(text) == 0:
+        if text.lower() == "help":
             message = f"""The command `/{command}` can show you, if your <https://github.com/pulls|PRs in Github> are 
 linked to a Jira ticket.
-Please add your *GitHub username* after `/{command}`.
+Please add your *GitHub username* after `/{command}` if it's not the same as the slack username.
 """
         else:
-            arg_array = text.split(" ")
-            if len(arg_array) == 1:
-                args = arg_array[0]
-            elif len(arg_array) == 2:
+            args = text if text else user
+            arg_array = args.split(" ")
+            if len(arg_array) == 2:
                 args = arg_array[0]
                 user = arg_array[1]
-            else:
-                message = ":stop: Please use the format: `/pr2jira <github_user>` or `/pr2jira <github_user> <jira_user_without_domain>`"
+            elif len(arg_array) > 2:
+                return ":stop: There are too many arguments. Please use the format: `/pr2jira [<github_user>|<github_user> <jira_user_without_domain>]`"
 
             if not message:
                 github_token = os.environ.get('GITHUB_TOKEN')
