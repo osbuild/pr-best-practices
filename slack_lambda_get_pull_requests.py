@@ -26,8 +26,14 @@ def is_practice_issue(issue, pr_data_processor):
     return get_github_url(issue, pr_data_processor) is not None
 
 def is_backlog_issue(pr, processed_issues):
-    for backlog_issue in processed_issues["backlog"]:
-        if pr["jira_key"] == backlog_issue["key"]:
+    for issue in processed_issues["backlog"]:
+        if pr["jira_key"] == issue["key"]:
+            return True
+    return False
+
+def is_sprint_issue(pr, processed_issues):
+    for issue in processed_issues["current_sprint"]:
+        if pr["jira_key"] == issue["key"]:
             return True
     return False
 
@@ -109,6 +115,9 @@ def _process(event):
     section = None
     for pr in sorted(pr_data_processor.with_jira
                                 , key=lambda x: is_backlog_issue(x, processed_issues)):
+        if is_sprint_issue(pr, processed_issues):
+            continue
+
         if section is None:
             message += "*Other work* 🟡\n"
 
