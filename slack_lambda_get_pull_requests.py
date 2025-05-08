@@ -37,6 +37,14 @@ def is_sprint_issue(pr, processed_issues):
             return True
     return False
 
+def get_issue_summary(pr, processed_issues):
+    for issue in processed_issues["backlog"] + processed_issues["current_sprint"]:
+        if pr["jira_key"] == issue["key"]:
+            return issue["summary"]
+
+    return pr["title"]
+
+
 def _process(event):
     jira_user = event.get("jira_user", "unknown")
     args = event.get("args", "unknown")
@@ -134,8 +142,8 @@ def _process(event):
         github_link = ""
         if github_url:
             github_link = f", <{github_url}|{pr['repo']}#{pr['number']}>"
-
-        message += f" • {pr['title']} {jira_link}{github_link}\n"
+        summary = get_issue_summary(pr, processed_issues)
+        message += f" • {summary} {jira_link}{github_link}\n"
 
     if section is not None:
         message += "\n"
