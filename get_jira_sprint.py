@@ -228,9 +228,6 @@ class JiraDataProcessor:
             attempt += 1
             try:
                 issues = self.jira.search_issues(jql_str=jql)
-                if not issues:
-                    logger.error(f"No issues found in open sprints.")
-                    sys.exit(1)
                 break
             except JIRAError as e:
                 status = getattr(e.response, 'status_code', None)
