@@ -27,30 +27,7 @@ You can also set the `PR_BEST_PRACTICES_TEST_CACHE` environment variable to anyt
 JIRA_HOST = os.getenv("JIRA_HOST", "https://issues.redhat.com")
 JIRA_TOKEN = os.getenv("JIRA_TOKEN")
 
-doc_epilog += "The retrieval of issues starts with `JIRA_TOPLEVEL_FILTER_ID`."
-# current quarter only
-# JIRA_TOPLEVEL_FILTER_ID = 12444600
-# whole portfolio plan
-JIRA_TOPLEVEL_FILTER_ID = 12429182
-
-# suggest those in case the other's don't really match
-FALLBACK_ISSUES = os.getenv("FALLBACK_ISSUES", "COMPOSER-2246").split(',')
-
-_child_issues_of_snippet = "\"), childIssuesOf(\"".join(FALLBACK_ISSUES)
-
-_CHILD_ISSUE_JQL = "" if len(FALLBACK_ISSUES) == 0 else f"OR issue in (childIssuesOf(\"{_child_issues_of_snippet}\"))"
-
-# double curly braces for the `.format()` later!
-JIRA_CHILD_EPICS_JQL = f"issue in childIssuesOf(\"{{jira_key}}\") {_CHILD_ISSUE_JQL} AND type = Epic AND status != Closed"
-
 JIRA_RE_KEY = r"[A-Z]+\-\d+"
-
-# following two are redundant, just as a consistency check
-JIRA_PARENT_LINK_FIELD_NAME = "Parent Link"
-JIRA_PARENT_LINK_FIELD = "customfield_12313140"
-
-JIRA_EPIC_LINK_FIELD_NAME = "Epic Link"
-JIRA_EPIC_LINK_FIELD = "customfield_12311140"
 
 logger = logging.getLogger(__name__)
 
@@ -226,17 +203,6 @@ def find_jira_key(pr_title, pr_html_url):
     return pr_title_link
 
 
-def get_parent(issue):
-    """Get the "parent" of the given issue.
-    That's either via parent link or epic link.
-    Just nesting the calls does not work if the field is _set_ to `None`
-    """
-    ret = getattr(issue.fields, JIRA_PARENT_LINK_FIELD, None)
-    if ret is None:
-        ret = getattr(issue.fields, JIRA_EPIC_LINK_FIELD, None)
-    return ret
-
-
 class ConsoleFormatter(logging.Formatter):
     """
     Custom formatter to include %(levelname)s only for WARNING or higher levels.
@@ -250,14 +216,12 @@ class ConsoleFormatter(logging.Formatter):
 
 
 class DataProcessor:
-    def __init__(self, owner, repo, author, only_repos, github_token, jira_token=None):
+    def __init__(self, owner, repo, author, github_token):
         self.owner = owner
         self.repo = repo
         self.author = author
-        self.only_repos = only_repos
         self.github_token = github_token
         self.github_api = GhApi(owner=owner, token=github_token)
-        self.jira_token = jira_token
 
         self.with_jira = []
         self.without_jira = []
@@ -305,180 +269,6 @@ class DataProcessor:
                 item['jira_url'] = None
                 self.without_jira.append(item)
 
-        if self.only_repos:
-            logger.info("Only fetching pull requests from repositories.")
-            return
-
-        # import here to avoid importing when not needed
-        global JIRA, JIRAError # pylint: disable=global-statement
-        from jira import JIRA, JIRAError
-
-        logger.info("Fetching Jira issues")
-        jira = JIRA(JIRA_HOST, token_auth=self.jira_token)
-        jql = f'filter = {JIRA_TOPLEVEL_FILTER_ID}'
-        issues = cache.cached_result(f"jira_search_issues_{jql}", jira.search_issues, jql_str=jql)
-
-        fields = cache.cached_result("jira_fields", jira.fields)
-        fieldmap = {f['id']: f['name'] for f in fields}
-        if JIRA_PARENT_LINK_FIELD not in fieldmap or fieldmap[JIRA_PARENT_LINK_FIELD] != JIRA_PARENT_LINK_FIELD_NAME:
-            logger.error(f"ERROR: Field {JIRA_PARENT_LINK_FIELD} is not {JIRA_PARENT_LINK_FIELD_NAME}.")
-            logger.error(f"Jira changed somehow, please update the script.")
-            sys.exit(1)
-
-        if JIRA_EPIC_LINK_FIELD not in fieldmap or fieldmap[JIRA_EPIC_LINK_FIELD] != JIRA_EPIC_LINK_FIELD_NAME:
-            logger.error(f"ERROR: Field {JIRA_EPIC_LINK_FIELD} is not {JIRA_EPIC_LINK_FIELD_NAME}.")
-            logger.error(f"Jira changed somehow, please update the script.")
-            logger.error(json.dumps(fieldmap, indent=2))
-            sys.exit(1)
-
-        child_issues = {}
-        cnt = 0
-        for i in issues:
-            cnt += 1
-            logger.info(f"Fetching children {cnt}/{len(issues)}: {i.key}…")
-            child_issues[i.key] = cache.cached_result(f"jira_epic_children_{i.key}", jira.search_issues, jql_str=JIRA_CHILD_EPICS_JQL.format(jira_key=i.key))
-
-        self.unique_sorted_epics = sorted(set([e for res in child_issues.values() for e in res]), key=lambda x: x.key)
-
-        # Initialize related issues with already fetched issues to avoid duplicates
-        self.related_issues = {i.key: i for i in issues} | {i.key: i for i in self.unique_sorted_epics}
-
-        logger.info("Search PR titles and description for Jira references")
-        for item in pull_request_list:
-            pr_key = item['html_url']
-            logger.info(f"Searching in: {pr_key}")
-            ref_nr = 0
-
-            jira_keys = find_all_jira_keys(item['title'])
-            for k in jira_keys:
-                try:
-                    self.unique_sorted_epics.append(cache.cached_result(f"jira_issue_{k}", jira.issue, id=k))
-                    ref_nr += 1
-                except JIRAError as e:
-                    if e.status_code in [403, 404]:
-                        logger.info(f"Skip getting JIRA issue {k}: {e.text}")
-                        continue
-                    raise e
-            if item['description']:
-                jira_keys = find_all_jira_keys(item['description'])
-                for k in jira_keys:
-                    try:
-                        self.unique_sorted_epics.append(cache.cached_result(f"jira_issue_{k}", jira.issue, id=k))
-                        ref_nr += 1
-                    except JIRAError as e:
-                        if e.status_code in [403, 404]:
-                            logger.info(f"Skip getting JIRA issue {k}: {e.text}")
-                            continue
-                        raise e
-
-        self.unique_sorted_epics = sorted(set([e for e in self.unique_sorted_epics]), key=lambda x: x.key)
-
-        logger.info(f"All open Epics: {len(self.unique_sorted_epics)}")
-        for i in self.unique_sorted_epics:
-            logger.info(f"  {i.key}: {i.fields.summary}")
-            logger.info(f"  {' ' * len(i.key)}  {JIRA_HOST}/browse/{i.key}")
-            logger.info(f"  {' ' * len(i.key)}  Parent: {get_parent(i)}")
-            parent = getattr(i.fields, JIRA_PARENT_LINK_FIELD, None)
-            if parent and parent not in self.related_issues.keys():
-                try:
-                    self.related_issues[parent] = cache.cached_result(f"jira_issue_{parent}", jira.issue, id=parent)
-                except JIRAError as e:
-                    if e.status_code in [403, 404]:
-                        logger.info(f"Skip getting JIRA issue {parent}: {e.text}")
-                        continue
-                    raise e
-            epic = getattr(i.fields, JIRA_EPIC_LINK_FIELD, None)
-            if epic and epic not in self.related_issues.keys():
-                try:
-                    self.related_issues[epic] = cache.cached_result(f"jira_issue_{epic}", jira.issue, id=epic)
-                except JIRAError as e:
-                    if e.status_code in [403, 404]:
-                        logger.info(f"Skip getting JIRA issue {epic}: {e.text}")
-                        continue
-                    raise e
-
-        logger.info("Fetching related issues…")
-        get_more = True
-        while get_more:
-            get_more = False
-            logger.info(f"{len(self.related_issues)}", end="\r", flush=True)
-            for i in list(self.related_issues.values()):
-                parent = getattr(i.fields, JIRA_PARENT_LINK_FIELD, None)
-                if parent and parent not in self.related_issues.keys():
-                    try:
-                        self.related_issues[parent] = cache.cached_result(f"jira_issue_{parent}", jira.issue, id=parent)
-                        get_more = True
-                    except JIRAError as e:
-                        if e.status_code in [403, 404]:
-                            logger.info(f"Skip getting JIRA issue {parent}: {e.text}")
-                            continue
-                        raise e
-        logger.info("Done.")
-
-        self.data_collection = {
-            "pull_requests": [
-                {
-                    'url': item['html_url'],
-                    'title': item['title'],
-                    'description': item['description'],
-                    'commit_messages': item['commit_messages']
-                } for item in pull_request_list if not jira_pattern.search(item['title'])
-            ],
-            "jira_issues": [
-                {
-                    'key': i.key,
-                    'summary': i.fields.summary,
-                    'assignee': i.fields.assignee.displayName if i.fields.assignee else "None",
-                    'description': i.fields.description,
-                    'comments': [{'author': c.author.displayName, 'body': c.body} for c in i.fields.comment.comments],
-                    'parent': get_parent(i)
-                } for i in self.unique_sorted_epics
-            ],
-            "related_issues": {
-                k: {
-                    'key': k,
-                    'summary': v.fields.summary,
-                    'assignee': v.fields.assignee.displayName if v.fields.assignee else "None",
-                    'description': v.fields.description,
-                    'comments': [{'author': c.author.displayName, 'body': c.body} for c in v.fields.comment.comments],
-                    'parent': get_parent(v)
-                } for k, v in self.related_issues.items()
-            },
-            "fallback_issues": FALLBACK_ISSUES
-        }
-
-        self.data_collection_jira = {
-            "pull_requests": [
-                {
-                    'url': item['html_url'],
-                    'title': item['title'],
-                    'description': item['description'],
-                    'commit_messages': item['commit_messages']
-                } for item in pull_request_list if jira_pattern.search(item['title'])
-            ],
-            "jira_issues": [
-                {
-                    'key': i.key,
-                    'summary': i.fields.summary,
-                    'assignee': i.fields.assignee.displayName if i.fields.assignee else "None",
-                    'description': i.fields.description,
-                    'comments': [{'author': c.author.displayName, 'body': c.body} for c in i.fields.comment.comments],
-                    'parent': get_parent(i)
-                } for i in self.unique_sorted_epics
-            ],
-            "related_issues": {
-                k: {
-                    'key': k,
-                    'summary': v.fields.summary,
-                    'assignee': v.fields.assignee.displayName if v.fields.assignee else "None",
-                    'description': v.fields.description,
-                    'comments': [{'author': c.author.displayName, 'body': c.body} for c in v.fields.comment.comments],
-                    'parent': get_parent(v)
-                } for k, v in self.related_issues.items()
-            },
-            "fallback_issues": FALLBACK_ISSUES
-        }
-
 
 def main():
     """Return a list of pull requests for a given organisation, repository and assignee"""
@@ -497,8 +287,6 @@ def main():
         token_arg_required = True
 
     parser.add_argument("--github-token", help="Set a token for github.com", required=token_arg_required)
-    parser.add_argument("--jira-host", help="The jira hostname to use", required=(JIRA_HOST is None))
-    parser.add_argument("--jira-token", help="Set the API token for jira")
     parser.add_argument("--org", help="Set an organisation on github.com", required=True)
     parser.add_argument("--repo", help="Set a repo in `--org` on github.com", required=False)
     parser.add_argument("--author", help="Author of pull requests", required=False)
@@ -506,7 +294,6 @@ def main():
                         action=argparse.BooleanOptionalAction)
     parser.add_argument("--quiet", help="No info logging. Use for automations", action="store_true")
     parser.add_argument("--debug", help="Enable debug logging", action="store_true")
-    parser.add_argument("--only-repos", help="Only fetch pull requests from repositories", action="store_true")
     parser.add_argument("--help-md", help="Show help as Markdown", action="store_true")
 
     # workaround that required attribute are not given for --help-md
@@ -515,14 +302,6 @@ def main():
         sys.exit(0)
 
     args = parser.parse_args()
-
-    if JIRA_TOKEN is None and args.jira_token is None:
-        parser.error("The JIRA_TOKEN environment variable or the --jira-token argument is required.")
-
-    JIRA_TOKEN = args.jira_token or JIRA_TOKEN
-
-    if not args.only_repos and not args.jira_token and not JIRA_TOKEN:
-        parser.error("The --jira-token argument is required when not using --only-repos.")
 
     # Assert that --quiet and --debug cannot be used together
     if args.quiet and args.debug:
@@ -542,14 +321,8 @@ def main():
         logger.addHandler(handler)
         logger.propagate = False
 
-    data_processor = DataProcessor(args.org, args.repo, args.author, args.only_repos, args.github_token)
+    data_processor = DataProcessor(args.org, args.repo, args.author, args.github_token)
     data_processor.process()
-
-    if not args.only_repos:
-        with open("data_collection.json", "w") as f:
-            f.write(json.dumps(data_processor.data_collection))
-        with open("data_collection_already_linked.json", "w") as f:
-            f.write(json.dumps(data_processor.data_collection_jira))
 
     with open("pr_data_collection.json", "w") as f:
         data = {"with_jira": data_processor.with_jira, "without_jira": data_processor.without_jira}
@@ -577,9 +350,6 @@ def main():
     logger.info(f"Stats:")
     logger.info(f"PRs with jira key: {len(data_processor.with_jira)}")
     logger.info(f"PRs without jira key: {len(data_processor.without_jira)}")
-    if not args.only_repos:
-        logger.info(f"Open Epics: {len(data_processor.unique_sorted_epics)}")
-        logger.info(f"Related Issues: {len(data_processor.related_issues)}")
 
 
 if __name__ == "__main__":

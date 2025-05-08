@@ -2,7 +2,6 @@ __pycache__
 .idea
 test_cache.pkl
 test_cache.sqlite
-ai_cache.pkl
 
 # For AWS deployment
 /package_main

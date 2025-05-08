@@ -32,7 +32,7 @@ def _process(event):
     elif len(arg_array) > 2:
         return ":stop: There are too many arguments. Please use the format: `/pr2jira [<github_user>|<github_user> <jira_user>]`"
 
-    pr_data_processor = DataProcessor(github_organization, None, args, True, github_token)
+    pr_data_processor = DataProcessor(github_organization, None, args, github_token)
     pr_data_processor.process()
 
     jira_data_processor = JiraDataProcessor(jira_token, f"{jira_user}", jira_board_id)

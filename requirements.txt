@@ -1,20 +1,3 @@
 jira
 requests
-requests_cache
-numpy
 ghapi
-sentence_transformers
-langchain_community
-truststore
-openai
-transformers
-nltk
-# dependency for nltk
-# which is not installed for some reason
-pysqlite3
-# maybe needed for streaming
-tiktoken
-# maybe not needed
-pip-system-certs
-# for nomic-embed-text-v1 embedding
-# einops
