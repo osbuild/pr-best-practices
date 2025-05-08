@@ -30,10 +30,14 @@ class JiraDataProcessor:
         self.jira = JIRA(JIRA_HOST, token_auth=self.jira_token)
         self.jira_board_id = jira_board_id
         self.backlog_filter_id = jira_backlog_filter_id
+
         if jira_username:
             self.jira_username = f"'{jira_username}'"
         else:
             self.jira_username = "currentUser()"
+
+        board_data = self.fetch_board(self.jira_board_id)
+        self.board_data = board_data
 
 
     def fetch_sprints(self, board_id, max_retries=5):
@@ -182,6 +186,20 @@ class JiraDataProcessor:
             return []
 
 
+    def _get_column(self, status_id):
+        """
+        Get the column name for a given status ID.
+        """
+        col_sort_id = 0
+        for column in self.board_data['columnConfig']['columns']:
+            col_sort_id += 1
+            if column['statuses']:
+                for status in column['statuses']:
+                    if status['id'] == status_id:
+                        return {"name": column['name']
+                                , "sort_id": col_sort_id}
+        return None
+
     def _process_issues(self, issues):
         """
         Internal method to process fetched issues and return structured data.
@@ -196,6 +214,7 @@ class JiraDataProcessor:
                 'description': issue.fields.description,
                 'status': issue.fields.status.name,
                 'sprint': self._extract_sprint(issue),
+                'sprint_column': self._get_column(issue.fields.status.id),
             })
         return processed_issues
 
@@ -217,8 +236,7 @@ class JiraDataProcessor:
         Fetch issues for the backlog using a specific Jira filter ID and process them.
         """
         if not self.backlog_filter_id:
-            board_data = self.fetch_board(self.jira_board_id)
-            self.backlog_filter_id = board_data['filter']['id']
+            self.backlog_filter_id = self.board_data['filter']['id']
 
         if not self.backlog_filter_id:
             logger.error(f"No backlog filter ID found for board ID {self.jira_board_id}.")
