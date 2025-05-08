@@ -223,11 +223,33 @@ class JiraDataProcessor:
         Fetch issues for the current sprint and process them.
         """
         jql = f"sprint in openSprints() and assignee = {self.jira_username}"
-        try:
-            issues = self.jira.search_issues(jql_str=jql)
-        except JIRAError as e:
-            logger.error(f"Failed to fetch issues for the current sprint: {e}")
-            raise e
+        attempt = 0
+        while True:
+            attempt += 1
+            try:
+                issues = self.jira.search_issues(jql_str=jql)
+                if not issues:
+                    logger.error(f"No issues found in open sprints.")
+                    sys.exit(1)
+                break
+            except JIRAError as e:
+                status = getattr(e.response, 'status_code', None)
+                if status == 429 and attempt <= 5:
+                    retry_after = e.response.headers.get("Retry-After")
+                    try:
+                        wait = max(int(retry_after),2)
+                    except (TypeError, ValueError):
+                        wait = 60
+                    logger.warning(
+                        f"Rate limit exceeded (attempt {attempt}/5). "
+                        f"Waiting {wait}s before retrying..."
+                    )
+                    time.sleep(wait)
+                    continue
+                logger.error(
+                    f"Failed to fetch issues for the current sprint (attempt {attempt}/5): {e}"
+                )
+                raise e
         return self._process_issues(issues)
 
     
