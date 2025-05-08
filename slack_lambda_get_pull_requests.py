@@ -16,6 +16,12 @@ def get_github_url(issue, pr_data_processor):
             return pr["html_url"]
     return None
 
+def get_github_number(issue, pr_data_processor):
+    for pr in pr_data_processor.with_jira:
+        if issue["key"] == pr["jira_key"]:
+            return f"{pr["repo"]}#{pr["number"]}"
+    return None
+
 def is_practice_issue(issue, pr_data_processor):
     return get_github_url(issue, pr_data_processor) is not None
 
@@ -65,7 +71,7 @@ def _process(event):
 
     message = f"Happy {datetime.now().strftime('%A')}! 👋\n\n"
 
-    message += f"🟢 *Work from your {current_sprint_url}*\n"
+    message += f"*Work from your {current_sprint_url}* 🟢\n"
 
     current_column = None
     for sprint_issue in sorted(
@@ -75,23 +81,25 @@ def _process(event):
         if current_column != sprint_issue["sprint_column"]["name"]:
             current_column = sprint_issue["sprint_column"]["name"]
             if current_column == "In Progress":
-                message += f"    :progress: {current_column}\n"
+                message += f"\n    :progress: {current_column}\n"
             elif current_column == "To Do":
-                message += f"    :todo-circle: {current_column}\n"
+                message += f"\n    :todo-circle: {current_column}\n"
             elif current_column == "Done":
-                message += f"    :done-circle-check: {current_column}\n"
+                message += f"\n    :done-circle-check: {current_column}\n"
+            else:
+                message += f"\n    {current_column}\n"
 
-        jira_link = f"<{sprint_issue['url']}|:jira:>"
-        mark = ""
+        jira_link = f"<{sprint_issue['url']}|{sprint_issue['key']}>"
         github_url = get_github_url(sprint_issue, pr_data_processor)
-        github_link = ""
+
         if github_url:
-            github_link = f" <{github_url}|:github:>"
+            github_link = f", <{github_url}|{get_github_number(sprint_issue, pr_data_processor)}>"
         else:
             if current_column == "In Progress":
-                mark = "⚠️ "
-
-        message += f" • {mark}{sprint_issue['key']}: {sprint_issue['summary']} {jira_link}{github_link}\n"
+                github_link = ", ⚠️ no PR linked"
+            else:
+                github_link = ""
+        message += f" • {sprint_issue['summary']} {jira_link}{github_link}\n"
 
     if not current_column:
         message += "    :hanging-sloth: You don't have any issues in the current sprint\n\n"
@@ -99,34 +107,36 @@ def _process(event):
         message += "\n"
 
     section = None
-    for backlog_issue in sorted(processed_issues["backlog"]
-                                , key=lambda x: is_backlog_issue(x, pr_data_processor)):
+    for pr in sorted(pr_data_processor.with_jira
+                                , key=lambda x: is_backlog_issue(x, processed_issues)):
         if section is None:
-            message += "🟡 *Other work*\n"
+            message += "*Other work* 🟡\n"
 
-        is_backlog_issue = is_backlog_issue(backlog_issue, pr_data_processor)
-        if section != is_backlog_issue:
-            section = is_backlog_issue
+        backlog_section = is_backlog_issue(pr, processed_issues)
+        if section != backlog_section:
+            section = backlog_section
             if section:
-                message += f"From our {backlog_url}\n"
+                message += f"    From our {backlog_url} (not in the current sprint)\n"
             else:
-                message += f"Not related to our {backlog_url}\n"
+                message += f"    Not related to our {backlog_url}\n"
 
-        jira_link = f"<{backlog_issue['url']}|:jira:>"
-        github_url = get_github_url(backlog_issue, pr_data_processor)
+        jira_link = f"<{pr['jira_url']}|{pr['jira_key']}>"
+        github_url = pr['html_url']
         github_link = ""
         if github_url:
-            github_link = f" <{github_url}|:github:>"
+            github_link = f", <{github_url}|{pr['repo']}#{pr['number']}>"
 
-        message += f" • {mark}{sprint_issue['summary']} {jira_link}{github_link}\n"
+        message += f" • {pr['title']} {jira_link}{github_link}\n"
 
-    message += f"🟠 *{len(pr_data_processor.without_jira)} of {len(pr_data_processor.with_jira) + len(pr_data_processor.without_jira)} PRs not tracked in Jira*\n"
+    if section is not None:
+        message += "\n"
+
+    message += f"*{len(pr_data_processor.without_jira)} of {len(pr_data_processor.with_jira) + len(pr_data_processor.without_jira)} PRs not tracked in Jira* 🟠\n"
     # Format the message for PRs without Jira keys
     if pr_data_processor.without_jira:
         pr_list = []
         for pr in sorted(pr_data_processor.without_jira, key=lambda x: x["repo"]):
-            pr_title_link = f"<{pr['html_url']}|{pr['title']}>"
-            entry = f" • {pr['repo']}: {pr_title_link} "
+            entry = f" • <{pr['html_url']}|{pr['repo']}#{pr['number']}: {pr['title']}>"
             pr_list.append(entry)
         pr_message = "\n".join(pr_list)
         # indenting does not work in slack, so we'll use some spaces for now
