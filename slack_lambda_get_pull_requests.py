@@ -81,13 +81,13 @@ def _process(event):
         if current_column != sprint_issue["sprint_column"]["name"]:
             current_column = sprint_issue["sprint_column"]["name"]
             if current_column == "In Progress":
-                message += f"\n    :progress: {current_column}\n"
+                message += f"\n  :progress: {current_column}\n"
             elif current_column == "To Do":
-                message += f"\n    :todo-circle: {current_column}\n"
+                message += f"\n  :todo-circle: {current_column}\n"
             elif current_column == "Done":
-                message += f"\n    :done-circle-check: {current_column}\n"
+                message += f"\n  :done-circle-check: {current_column}\n"
             else:
-                message += f"\n    {current_column}\n"
+                message += f"\n  {current_column}\n"
 
         jira_link = f"<{sprint_issue['url']}|{sprint_issue['key']}>"
         github_url = get_github_url(sprint_issue, pr_data_processor)
@@ -99,7 +99,7 @@ def _process(event):
                 github_link = ", ⚠️ no PR linked"
             else:
                 github_link = ""
-        message += f" • {sprint_issue['summary']} {jira_link}{github_link}\n"
+        message += f"     • {sprint_issue['summary']} {jira_link}{github_link}\n"
 
     if not current_column:
         message += "    :hanging-sloth: You don't have any issues in the current sprint\n\n"
