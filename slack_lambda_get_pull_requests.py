@@ -118,7 +118,7 @@ def _process(event):
                 github_link = ", ⚠️ no PR linked"
             else:
                 github_link = ""
-        message += f"     • {sprint_issue['summary']} ({jira_link}{github_link})\n"
+        message += f"     • {sprint_issue['summary']} {jira_link}{github_link}\n"
 
     if not current_column:
         message += "    :hanging-sloth: You don't have any issues in the current sprint\n\n"
@@ -149,7 +149,7 @@ def _process(event):
         if github_url:
             github_link = f", <{github_url}|:github: {pr['repo']}#{pr['number']}>"
         summary = get_issue_summary(jira_data_processor, pr, processed_issues)
-        message += f" • {summary} ({jira_link}{github_link})\n"
+        message += f" • {summary} {jira_link}{github_link}\n"
 
     if section is not None:
         message += "\n"
@@ -159,7 +159,7 @@ def _process(event):
     if pr_data_processor.without_jira:
         pr_list = []
         for pr in sorted(pr_data_processor.without_jira, key=lambda x: x["repo"]):
-            entry = f" • <{pr['html_url']}|{pr['repo']}#{pr['number']}: {pr['title']}>"
+            entry = f" • {pr['title']} <{pr['html_url']}|:github: {pr['repo']}#{pr['number']}>"
             pr_list.append(entry)
         pr_message = "\n".join(pr_list)
         # indenting does not work in slack, so we'll use some spaces for now
