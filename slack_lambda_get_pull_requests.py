@@ -37,6 +37,7 @@ def is_sprint_issue(pr, processed_issues):
             return True
     return False
 
+
 def get_issue_summary(jira_data_processor, pr, processed_issues):
     for issue in processed_issues["backlog"] + processed_issues["current_sprint"]:
         if pr["jira_key"] == issue["key"]:
@@ -99,25 +100,25 @@ def _process(event):
         if current_column != sprint_issue["sprint_column"]["name"]:
             current_column = sprint_issue["sprint_column"]["name"]
             if current_column == "In Progress":
-                message += f"\n  :progress: {current_column}\n"
+                message += f"\n  :progress: *{current_column}*\n"
             elif current_column == "To Do":
-                message += f"\n  :todo-circle: {current_column}\n"
+                message += f"\n  :todo-circle: *{current_column}*\n"
             elif current_column == "Done":
-                message += f"\n  :done-circle-check: {current_column}\n"
+                message += f"\n  :check-done: *{current_column}*\n"
             else:
-                message += f"\n  {current_column}\n"
+                message += f"\n  *{current_column}*\n"
 
-        jira_link = f"<{sprint_issue['url']}|{sprint_issue['key']}>"
+        jira_link = f"<{sprint_issue['url']}|:jira-6472: {sprint_issue['key']}>"
         github_url = get_github_url(sprint_issue, pr_data_processor)
 
         if github_url:
-            github_link = f", <{github_url}|{get_github_number(sprint_issue, pr_data_processor)}>"
+            github_link = f", <{github_url}|:github: {get_github_number(sprint_issue, pr_data_processor)}>"
         else:
             if current_column == "In Progress":
                 github_link = ", ⚠️ no PR linked"
             else:
                 github_link = ""
-        message += f"     • {sprint_issue['summary']} {jira_link}{github_link}\n"
+        message += f"     • {sprint_issue['summary']} ({jira_link}{github_link})\n"
 
     if not current_column:
         message += "    :hanging-sloth: You don't have any issues in the current sprint\n\n"
@@ -136,23 +137,24 @@ def _process(event):
         backlog_section = is_backlog_issue(pr, processed_issues)
         if section != backlog_section:
             section = backlog_section
-            if section:
-                message += f"    From our {backlog_url} (not in the current sprint)\n"
-            else:
-                message += f"    Not related to our {backlog_url}\n"
+            # skip sub-heading for simplicity for now
+            #if section:
+            #    message += f"    From our {backlog_url} (not in the current sprint)\n"
+            #else:
+            #    message += f"    Not related to our {backlog_url}\n"
 
-        jira_link = f"<{pr['jira_url']}|{pr['jira_key']}>"
+        jira_link = f"<{pr['jira_url']}|:jira-6472: {pr['jira_key']}>"
         github_url = pr['html_url']
         github_link = ""
         if github_url:
-            github_link = f", <{github_url}|{pr['repo']}#{pr['number']}>"
+            github_link = f", <{github_url}|:github: {pr['repo']}#{pr['number']}>"
         summary = get_issue_summary(jira_data_processor, pr, processed_issues)
-        message += f" • {summary} {jira_link}{github_link}\n"
+        message += f" • {summary} ({jira_link}{github_link})\n"
 
     if section is not None:
         message += "\n"
 
-    message += f"*{len(pr_data_processor.without_jira)} of {len(pr_data_processor.with_jira) + len(pr_data_processor.without_jira)} PRs not tracked in Jira* 🟠\n"
+    message += f"*PRs not tracked in Jira* 🟠\n"
     # Format the message for PRs without Jira keys
     if pr_data_processor.without_jira:
         pr_list = []
