@@ -249,6 +249,32 @@ class JiraDataProcessor:
                 raise e
         return self._process_issues(issues)
 
+    def get_issue(self, key, max_retries=5):
+        jql = f"key = {key}"
+        attempt = 0
+        while True:
+            attempt += 1
+            try:
+                issue = self.jira.search_issues(jql_str=jql)
+                return self._process_issues(issue)[0]
+            except JIRAError as e:
+                status = getattr(e.response, 'status_code', None)
+                if status == 429 and attempt <= max_retries:
+                    retry_after = e.response.headers.get("Retry-After")
+                    try:
+                        wait = max(int(retry_after),2)
+                    except (TypeError, ValueError):
+                        wait = 60
+                    logger.warning(
+                        f"Rate limit exceeded (attempt {attempt}/{max_retries}). "
+                        f"Waiting {wait}s before retrying..."
+                    )
+                    time.sleep(wait)
+                    continue
+                logger.error(
+                    f"Failed to fetch issue {key} (attempt {attempt}/{max_retries}): {e}"
+                )
+                raise e
     
     def fetch_current_backlog_issues(self, exclude_resolved=True, max_retries=5):
         """
