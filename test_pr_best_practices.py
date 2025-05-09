@@ -12,6 +12,7 @@ from pr_best_practices import (
     check_pr_description_not_empty,
     add_best_practice_label
 )
+from slack_lambda_get_pull_requests import _process
 
 class TestPRChecks(unittest.TestCase):
 
@@ -58,6 +59,31 @@ class TestPRChecks(unittest.TestCase):
             add_best_practice_label("mock_token", "mock_repo", 123)
             output = fake_stdout.getvalue().strip()
             self.assertEqual(output, "Label 'best-practice' added to PR successfully.")
+
+class TestSlackLambdaGetPullRequests(unittest.TestCase):
+
+    def test_process_with_env_variables(self):
+        event = {
+            "jira_user": os.environ["JIRA_TEST_USERNAME"],
+            "args": os.environ["SLACK_COMMAND_ARGS"],
+            "github_organization": os.environ["GITHUB_ORGANIZATION"],
+            "github_token": os.environ["GITHUB_TOKEN"],
+            "jira_token": os.environ["JIRA_TOKEN"],
+            "jira_board_id": os.environ["JIRA_BOARD_ID"],
+            "response_url": "http://mock_response_url"
+        }
+
+        with patch('requests.post') as mock_post:
+            mock_response = requests.Response()
+            mock_response.status_code = 200
+            mock_post.return_value = mock_response
+
+            message = _process(event)
+
+            # Just a simple assert
+            # this test is mainly to test and print the message
+            assert "Happy" in message
+            print(message)
 
 if __name__ == '__main__':
     unittest.main()

@@ -1,5 +1,7 @@
 import argparse
 import requests
+import sys
+from utils import format_help_as_md
 
 def process_github_event(comment_url, issue_url, github_token, pr_title, pr_body, jira_key):
     """
@@ -50,6 +52,12 @@ def main():
     parser.add_argument("--pr-title", required=True, help="Current title of the pull request.")
     parser.add_argument("--pr-body", required=True, help="Current body of the pull request.")
     parser.add_argument("--jira-key", required=True, help="JIRA key to append to the pull request.")
+    parser.add_argument("--help-md", help="Show help as Markdown", action="store_true")
+
+    # workaround that required attribute are not given for --help-md
+    if "--help-md" in sys.argv:
+        print(format_help_as_md(parser))
+        sys.exit(0)
 
     args = parser.parse_args()
 
