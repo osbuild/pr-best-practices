@@ -102,21 +102,15 @@ Please add your *GitHub username* after `/{command}` if it's not the same as the
     }
 
 
-def get_secret(secret_name, region_name = "us-east-1"):
+def get_secret(secret_name):
     """
     Retrieve a secret from AWS Secrets Manager.
     or fallback to environment variable if not found.
     """
     logger.debug(f"Getting secret {secret_name}")
-    # Create a Secrets Manager client
-    session = boto3.session.Session()
-    client = session.client(
-        service_name='secretsmanager',
-        region_name=region_name
-    )
 
     try:
-        get_secret_value_response = client.get_secret_value(
+        get_secret_value_response = secretmanager_client.get_secret_value(
             SecretId=secret_name
         )
     except ClientError as e:
@@ -199,13 +193,27 @@ def _check_request_validity(event):
 
 def lambda_handler(event, context):
 
+    global secretmanager_client
+
+    region_name = os.environ.get('SECRETMANAGER_AWS_REGION', 'us-east-1')
+
+    # Create a Secrets Manager client
+    session = boto3.session.Session()
+    secretmanager_client = session.client(
+        service_name='secretsmanager',
+        region_name=region_name
+    )
+
     body, error = _check_request_validity(event)    
     if error:
         return error
 
+    logger.debug("Request valid")
     params = urllib.parse.parse_qs(body)
 
     function_name = context.function_name.lower()
     staging = "staging" in function_name
-    return _handle_request(params, staging)
+    ret = _handle_request(params, staging)
+    logger.debug("Request done")
+    return ret
 
