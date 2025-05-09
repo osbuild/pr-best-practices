@@ -15,6 +15,13 @@ import urllib.parse
 import base64
 
 from utils import UserMap
+from botocore.exceptions import ClientError
+
+import logging
+
+# Set the logging level to DEBUG for more verbose output
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 lambda_client = boto3.client('lambda')
 
@@ -54,10 +61,10 @@ Please add your *GitHub username* after `/{command}` if it's not the same as the
                 return ":stop: There are too many arguments. Please use the format: `/pr2jira [<github_user>|<github_user> <jira_user>]`"
 
             if not message:
-                github_token = os.environ.get('GITHUB_TOKEN')
+                github_token = get_secret("SCHUTZBOT_GITHUB_TOKEN")
                 github_organization = os.environ.get('GITHUB_ORGANIZATION')
 
-                jira_token = os.environ.get('JIRA_TOKEN')
+                jira_token = get_secret("SLACK_COMMAND_JIRA_TOKEN")
                 jira_board_id = os.environ.get('JIRA_BOARD_ID')
 
                 jira_current_sprint_url = os.environ.get("JIRA_CURRENT_SPRINT_URL")
@@ -95,8 +102,38 @@ Please add your *GitHub username* after `/{command}` if it's not the same as the
     }
 
 
+def get_secret(secret_name, region_name = "us-east-1"):
+    """
+    Retrieve a secret from AWS Secrets Manager.
+    or fallback to environment variable if not found.
+    """
+    logger.debug(f"Getting secret {secret_name}")
+    # Create a Secrets Manager client
+    session = boto3.session.Session()
+    client = session.client(
+        service_name='secretsmanager',
+        region_name=region_name
+    )
+
+    try:
+        get_secret_value_response = client.get_secret_value(
+            SecretId=secret_name
+        )
+    except ClientError as e:
+        # For a list of exceptions thrown, see
+        # https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_GetSecretValue.html
+        raise e
+
+    secret = get_secret_value_response['SecretString']
+    if secret:
+        return secret
+    else:
+        logger.warning(f"Falling back to get {secret_name} from env")
+        return os.environ.get(secret_name)
+
+
 def _check_request_validity(event):
-    signing_secret = os.environ.get('SLACK_SIGNING_SECRET')
+    signing_secret = get_secret("SLACK_SCHUTZBOT_SIGNING_SECRET")
     if not signing_secret:
         return None, {
             "statusCode": 500,
