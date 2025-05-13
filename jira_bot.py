@@ -3,28 +3,14 @@
 import argparse
 import os
 import sys
-import yaml
 
 from jira import JIRA
-from utils import format_help_as_md
+from utils import UserMap, format_help_as_md
 
 JIRA_SERVER = os.getenv("JIRA_SERVER", "https://issues.redhat.com")
 DEFAULT_PROJECT_KEY = os.getenv("DEFAULT_PROJECT_KEY", "HMS")
 DEFAULT_ISSUE_TYPE = os.getenv("DEFAULT_ISSUE_TYPE", "Task")
 DEFAULT_COMPONENT = os.getenv("DEFAULT_COMPONENT", "Image Builder")
-
-
-def load_assignee_mapping(file_path):
-    """
-    Load GitHub-to-Jira username mappings from a YAML file.
-    """
-    try:
-        with open(file_path, 'r') as yaml_file:
-            data = yaml.safe_load(yaml_file)
-            return data.get('assignees', {})
-    except Exception as e:
-        print(f"Error loading YAML file '{file_path}': {e}", file=sys.stderr)
-        return {}
 
 
 def get_jira_username(github_nick, mapping):
@@ -132,8 +118,8 @@ def main():
                         help="The epic link (optional, e.g. 'HMS-123')")
     parser.add_argument('--component', default=DEFAULT_COMPONENT,
                         help=f"The component (default: '{DEFAULT_COMPONENT}').")
-    parser.add_argument('--assignees-yaml', default='assignees.yaml',
-                        help="Path to the YAML file containing GitHub-to-Jira username mappings (default: assignees.yaml).")
+    parser.add_argument('--assignees-yaml', default='usermap.yaml',
+                        help="Path to the YAML file containing GitHub-to-Jira username mappings (default: usermap.yaml).")
     parser.add_argument("--help-md", help="Show help as Markdown", action="store_true")
 
     # workaround that required attribute are not given for --help-md
@@ -144,10 +130,10 @@ def main():
     args = parser.parse_args()
 
     # Get the Jira username based on the GitHub nickname, if provided
-    assignee_mapping = load_assignee_mapping(args.assignees_yaml)
+    assignee_mapping = UserMap(args.assignees_yaml)
     jira_username = None
     if args.assignee:
-        jira_username = get_jira_username(args.assignee, assignee_mapping)
+        jira_username = assignee_mapping.github2jira(args.assignee)
         if not jira_username:
             print(f"🟠 Warning: No Jira username found for GitHub nickname '{args.assignee}'.", file=sys.stderr)
 

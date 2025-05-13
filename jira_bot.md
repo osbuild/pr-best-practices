@@ -28,6 +28,6 @@ Create a Jira task.
                         The component (default: 'Image Builder').
   --assignees-yaml ASSIGNEES_YAML
                         Path to the YAML file containing GitHub-to-Jira
-                        username mappings (default: assignees.yaml).
+                        username mappings (default: usermap.yaml).
   --help-md             Show help as Markdown
 ```
