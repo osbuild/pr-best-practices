@@ -74,7 +74,7 @@ runs:
           --description "$PR_BODY" \
           --epic-link "$EPIC_KEY" \
           --assignee "$PR_AUTHOR" \
-          --assignees-yaml "${{ github.action_path }}/assignees.yaml")
+          --assignees-yaml "${{ github.action_path }}/usermap.yaml")
 
         # Update the PR title and body with the Jira key of the newly created Task
         python3 "${{ github.action_path }}/update_pr.py" \
@@ -134,7 +134,7 @@ runs:
           --description "$PR_BODY" \
           --epic-link "$EPIC_KEY" \
           --assignee "$PR_AUTHOR" \
-          --assignees-yaml "${{ github.action_path }}/assignees.yaml")
+          --assignees-yaml "${{ github.action_path }}/usermap.yaml")
 
         # Add a rocket reaction if the trigger was a comment
         # Update the PR title and body with the Jira key of the newly created Task
