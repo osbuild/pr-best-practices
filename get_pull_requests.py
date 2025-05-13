@@ -102,8 +102,6 @@ def get_pull_request_properties(github_api, pull_request, org, repo):
     pr_properties["repo"] = repo
     pr_properties["created_at"] = pull_request.created_at
     pr_properties["updated_at"] = pull_request.updated_at
-    #pr_properties["last_updated_days"] = get_last_updated_days(pull_request.updated_at)
-    #pr_properties["login"] = get_slack_userid(pull_request.user['login'])
     pr_properties["requested_reviewers"] = pull_request_details["requested_reviewers"]
     pr_properties["additions"] = pull_request_details["additions"]
     pr_properties["deletions"] = pull_request_details["deletions"]
@@ -111,9 +109,6 @@ def get_pull_request_properties(github_api, pull_request, org, repo):
     pr_properties["mergeable"] = pull_request_details["mergeable"]
     pr_properties["rebaseable"] = pull_request_details["rebaseable"]
     pr_properties["mergeable_state"] = pull_request_details["mergeable_state"]
-    #pr_properties["changes_requested"] = get_review_state(github_api, repo, pull_request, "CHANGES_REQUESTED")
-    #pr_properties["approved"] = get_review_state(github_api, repo, pull_request, "APPROVED")
-    #pr_properties["status"], pr_properties["state"] = get_commit_status(github_api, repo, pull_request_details)#
     pr_properties["description"] = pull_request.body
 
     return pr_properties
