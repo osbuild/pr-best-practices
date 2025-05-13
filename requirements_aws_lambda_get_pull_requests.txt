@@ -1,0 +1,8 @@
+jira
+requests
+requests_cache
+ghapi
+pyyaml
+
+# jira needs 'pkg_resources'
+setuptools

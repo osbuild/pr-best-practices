@@ -105,7 +105,7 @@ def get_pull_request_properties(github_api, pull_request, org, repo):
     pr_properties["repo"] = repo
     pr_properties["created_at"] = pull_request.created_at
     pr_properties["updated_at"] = pull_request.updated_at
-    pr_properties["requested_reviewers"] = pull_request_details["requested_reviewers"]
+    pr_properties["requested_reviewers"] = list(pull_request_details["requested_reviewers"])
     pr_properties["additions"] = pull_request_details["additions"]
     pr_properties["deletions"] = pull_request_details["deletions"]
     pr_properties["draft"] = pull_request_details["draft"]
