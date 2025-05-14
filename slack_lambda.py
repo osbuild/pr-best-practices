@@ -42,8 +42,8 @@ def _handle_request(params, staging=False):
         command = command.removesuffix("_staging")
     if command == "hi":
         # Prepare the response message
-        message = f"👋 {command} {user}, nice to meet you! I'm healthy, up & running."
-    elif command == "pr2jira":
+        message = f"👋 Hi {user}, nice to meet you! I'm healthy, up & running."
+    elif command in ["pr2jira", "sprint-overview"]:
         if text.lower() == "help":
             message = f"""The command `/{command}` can show you, if your <https://github.com/pulls|PRs in Github> are 
 linked to a Jira ticket.
@@ -58,7 +58,7 @@ Please add your *GitHub username* after `/{command}` if it's not the same as the
                 args = arg_array[0]
                 jira_user = arg_array[1]
             elif len(arg_array) > 2:
-                return ":stop: There are too many arguments. Please use the format: `/pr2jira [<github_user>|<github_user> <jira_user>]`"
+                return f":stop: There are too many arguments. Please use the format: `/{command} [<github_user>|<github_user> <jira_user>]`"
 
             if not message:
                 github_token = get_secret("SCHUTZBOT_GITHUB_TOKEN")
