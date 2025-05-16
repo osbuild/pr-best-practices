@@ -28,9 +28,10 @@ Perform various checks and actions related to GitHub Pull Requests.
                         Pull Request number
   --help-md             Show help as Markdown
 ```
-Example usages:
+# Example usages
+```
 python pr_best_practices.py --pr-title "PR-123: Fix some issues"
 python pr_best_practices.py --check-commits
 python pr_best_practices.py --pr-description "This is a PR description"
 python pr_best_practices.py --add-label --token "your_token" --repository "your_repository" --pr-number 123
-
+```

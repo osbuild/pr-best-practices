@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 def format_help_as_md(parser):
     help_text = parser.format_help()
-    section = re.compile(r"^(\w+):$")
+    section = re.compile(r"^([\w ]+):$")
     ret = []
     in_block = False
     for line in help_text.split("\n"):
