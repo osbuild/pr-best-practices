@@ -13,11 +13,24 @@ DEFAULT_ISSUE_TYPE = os.getenv("DEFAULT_ISSUE_TYPE", "Task")
 DEFAULT_COMPONENT = os.getenv("DEFAULT_COMPONENT", "Image Builder")
 
 
-def get_jira_username(github_nick, mapping):
+def get_jira_username(jira, github_nick):
     """
     Find the Jira username corresponding to a GitHub nickname.
+    Can also resolve E-Mail to Jira username
     """
-    return mapping.get(github_nick, None)
+    global assignee_mapping
+
+    user = assignee_mapping.github2jira(github_nick)
+    if not user:
+        print(f"🟠 Warning: No Jira username found for GitHub nickname '{github_nick}'.", file=sys.stderr)
+        return None
+
+    resolved_user = jira.search_users(user)
+    if len(resolved_user) != 1:
+        print(f"🟠 Warning: Expected 1 user for '{github_nick}' but got {resolved_user}.", file=sys.stderr)
+        return None
+
+    return resolved_user[0].name
 
 
 def is_epic_issue(jira, issue_key):
@@ -80,7 +93,7 @@ def create_jira_task(token, project_key, summary, description, issue_type, epic_
 
     # Add assignee if provided
     if assignee:
-        issue_dict['assignee'] = {'name': assignee}
+        issue_dict['assignee'] = {'name': get_jira_username(jira, assignee)}
 
     # Add component if provided
     if component:
@@ -98,6 +111,8 @@ def create_jira_task(token, project_key, summary, description, issue_type, epic_
 
 def main():
     """ main - command line parsing and calling the bot """
+    global assignee_mapping
+
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description="Create a Jira task.")
     parser.add_argument('--token', required=True,
@@ -129,13 +144,7 @@ def main():
 
     args = parser.parse_args()
 
-    # Get the Jira username based on the GitHub nickname, if provided
     assignee_mapping = UserMap(args.assignees_yaml)
-    jira_username = None
-    if args.assignee:
-        jira_username = assignee_mapping.github2jira(args.assignee)
-        if not jira_username:
-            print(f"🟠 Warning: No Jira username found for GitHub nickname '{args.assignee}'.", file=sys.stderr)
 
     # Call the task creation function with parsed arguments
     create_jira_task(
@@ -146,7 +155,7 @@ def main():
         issue_type=args.issuetype,
         epic_link=args.epic_link,
         component=args.component,
-        assignee=jira_username,
+        assignee=args.assignee,
         story_points=args.story_points
     )
 
