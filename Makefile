@@ -8,7 +8,11 @@ help:
 	@echo 'Internal Targets:'
 	@awk 'match($$0, /^([a-zA-Z_\/-]+):.*? ### (.*)$$/, m) {printf "  \033[36m%-30s\033[0m %s\n", m[1], m[2]}' $(MAKEFILE_LIST) | sort
 
-GENERATED_MDs=pr_best_practices.md jira_bot.md update_pr.md get_pull_requests.md
+GENERATED_MDs=pr_best_practices.md \
+ jira_bot.md \
+ update_pr.md \
+ get_pull_requests.md \
+ get_jira_sprint.md
 
 %.md: %.py
 	python $< --help-md > $@ 2>/dev/null || ( \

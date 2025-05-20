@@ -1,9 +1,12 @@
 #!/usr/bin/python3
 
 """
-Small script to return all pull requests for a given organisation, repository and assignee
+Returns all pull requests for a given organisation, repository and assignee
 
-Saves a `data_collection.json` to be used with `ai_reasoning.py` for further analysis.
+Saves a `pr_data_collection.json` to be used with following scripts.
+Alternatively the class `DataProcessor` can be used to get the data
+from within python.
+
 """
 
 import argparse
