@@ -32,3 +32,5 @@ Create a Jira task.
                         username mappings (default: usermap.yaml).
   --help-md             Show help as Markdown
 ```
+----
+Update this by editing doc strings in `jira_bot.py` and running `make docs`

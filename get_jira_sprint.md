@@ -22,3 +22,5 @@ to get the underlying issue filter and sprint information. The environment
 variable `JIRA_USERNAME` will be used to filter the information for this user.
 When not set Jira's `currentUser()` will be used instead.
 
+----
+Update this by editing doc strings in `get_jira_sprint.py` and running `make docs`

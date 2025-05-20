@@ -14,7 +14,7 @@ GENERATED_MDs=pr_best_practices.md \
  get_pull_requests.md \
  get_jira_sprint.md
 
-%.md: %.py
+%.md: %.py utils.py
 	python $< --help-md > $@ 2>/dev/null || ( \
 	echo '```' > $@ ; \
 	python $< --help >> $@ ; \
