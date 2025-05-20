@@ -1,7 +1,12 @@
 #!/usr/bin/python3
 
 """
-Script to query Jira issues for the current sprint and process them using a reusable DataProcessor class.
+Script to query Jira issues for the current sprint.
+
+Saves a `current_sprint_issues.json` to be used with following scripts.
+Alternatively the class `JiraDataProcessor` can be used to get the data
+from within python.
+
 """
 
 import argparse
@@ -17,11 +22,22 @@ from jira import JIRA, JIRAError
 
 logger = logging.getLogger(__name__)
 
+doc_epilog = """You can set the `JIRA_TOKEN` environment variable
+instead of using the `--jira-token` argument.
+"""
+
 JIRA_HOST = os.getenv("JIRA_HOST", "https://issues.redhat.com")
 JIRA_TOKEN = os.getenv("JIRA_TOKEN")
 
+doc_epilog += """The environment variable `JIRA_BOARD_ID` will
+be used to get the underlying issue filter and sprint information.
+"""
 JIRA_BOARD_ID = os.getenv("JIRA_BOARD_ID")
 
+doc_epilog += """The environment variable `JIRA_USERNAME` will
+be used to filter the information for this user.
+When not set Jira's `currentUser()` will be used instead.
+"""
 JIRA_USERNAME = os.getenv("JIRA_USERNAME")
 
 class JiraDataProcessor:
@@ -347,7 +363,7 @@ def main():
     """Query Jira issues for the current sprint and process them."""
     parser = argparse.ArgumentParser(allow_abbrev=False,
         description=__doc__,
-        epilog="You can set the `JIRA_TOKEN` environment variable instead of using the `--jira-token` argument."
+        epilog=doc_epilog
     )
 
     parser.add_argument("--jira-token", help="Set the API token for Jira", required=(JIRA_TOKEN is None))

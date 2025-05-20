@@ -1,3 +1,9 @@
+#!/usr/bin/env python3
+"""
+AWS Lambda function calling `JiraDataProcessor` and `DataProcessor`
+formatting the result and sending back to the slack user.
+"""
+
 from datetime import datetime
 import os
 import requests
