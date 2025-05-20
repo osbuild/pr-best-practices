@@ -20,3 +20,5 @@ Process a GitHub event to add a reaction and update PR metadata.
   --jira-key JIRA_KEY   JIRA key to append to the pull request.
   --help-md             Show help as Markdown
 ```
+----
+Update this by editing doc strings in `update_pr.py` and running `make docs`
