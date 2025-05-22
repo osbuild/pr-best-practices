@@ -39,6 +39,7 @@ check-docs: docs  ## check if all docs are up to date or fail otherwise.
 	@if [ -n "$$(git status --porcelain)" ]; then \
 		echo "Error: There are uncommitted changes."; \
 		git status --short; \
+		git diff; \
 		exit 1; \
 	else \
 		echo "Docs seem to be up to date."; \
