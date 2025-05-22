@@ -5,6 +5,8 @@ You can use them to ensure that your PRs adhere to certain standards and best pr
 
 The simplest way to use this is by leveraging `action.yml` and integrate the scripts into your GitHub Actions workflow.
 
+The slack integration, also contained in this repository is [documented below](#slack-integration)
+
 ## Features
 
 - **Check PR Title Contains Jira Ticket**: Verifies if the title of the pull request contains a Jira ticket reference.
@@ -76,6 +78,7 @@ Those script can also be used from the command line.
  * [udpate_pr.py](update_pr.md)
  * `extract_jira_key.py`
    Extracts the jira key from the given text. The first argument is expected to be the whole text to process.
+ * [get_jira_sprint.py](get_jira_sprint.md)
 
 ## License
 
@@ -84,3 +87,33 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ---
 
 You should replace placeholders like `your_username`, `your_token`, and `your_repository` with your actual GitHub username, token, and repository name, respectively. Additionally, make sure to update the license file (`LICENSE`) according to your preferences or requirements.
+
+# Slack integration
+This repository also contains scripts (Amazon AWS lambda functions) to generate responses for Slack commands.
+
+## Overview
+The Slack integration works like this:
+
+1. A Slack command is set up to trigger a "Request URL"
+1. This "Request URL" is implemented by a "Function URL" of an AWS Lambda
+1. The request gets validated with the `X-Slack-Signature` sent by Slack against the "Signing Secret"
+1. An initial response is sent back (3 sec. timeout of Slack has to be taken into account)
+1. Depending on the command another lambda function takes care of handling the real response
+
+**All commands** are handled by [`slack_lambda.py`](slack_lambda.md), which validates
+the request and sends the response back to Slack. This response sometimes is just
+a confirmation of the received command and further processing is done in parallel.
+
+The command `/sprint-overview` results in a second lambda implemented in
+`slack_lambda_get_pull_requests.py`.
+This uses [`get_jira_sprint.py`](get_jira_sprint.md) and [`get_pull_requets.py`](get_pull_requets.md) to collect and
+send back an overview to the Slack user.
+
+## Re-deployment
+To deploy a new version, please run
+
+```
+make build
+```
+
+This will package all necessary files into ZIP files, ready to be uploaded to AWS.

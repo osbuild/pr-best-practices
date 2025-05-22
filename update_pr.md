@@ -1,8 +1,8 @@
 # Usage
 ```
        update_pr.py [-h] [--comment-url COMMENT_URL] --issue-url ISSUE_URL
-                    --github-token GITHUB_TOKEN --pr-title PR_TITLE
-                    --pr-body PR_BODY --jira-key JIRA_KEY [--help-md]
+                    --github-token GITHUB_TOKEN --pr-title PR_TITLE --pr-body
+                    PR_BODY --jira-key JIRA_KEY [--help-md]
 ```
 Process a GitHub event to add a reaction and update PR metadata.
 
@@ -20,3 +20,5 @@ Process a GitHub event to add a reaction and update PR metadata.
   --jira-key JIRA_KEY   JIRA key to append to the pull request.
   --help-md             Show help as Markdown
 ```
+----
+Update this by editing doc strings in `update_pr.py` and running `make docs`

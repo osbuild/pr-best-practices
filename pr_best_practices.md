@@ -35,3 +35,5 @@ python pr_best_practices.py --check-commits
 python pr_best_practices.py --pr-description "This is a PR description"
 python pr_best_practices.py --add-label --token "your_token" --repository "your_repository" --pr-number 123
 ```
+----
+Update this by editing doc strings in `pr_best_practices.py` and running `make docs`

@@ -2,6 +2,7 @@ import logging
 import pickle
 import os
 import re
+import sys
 import threading
 
 from typing import Any
@@ -29,6 +30,10 @@ def format_help_as_md(parser):
             in_block = False
         else:
             ret.append(line)
+    ret.append("----")
+    calling_app = os.path.basename(sys.argv[0])
+    ret.append(f"Update this by editing doc strings in `{calling_app}` "
+               "and running `make docs`")
     return "\n".join(ret)
 
 class Cache:
