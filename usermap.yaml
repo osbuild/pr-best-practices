@@ -35,3 +35,6 @@ assignees:
   - github: lzap
     jira: lzap@redhat.com
     slack: lzapleta
+  - github: melcorr
+    jira: mcorr@redhat.com
+
