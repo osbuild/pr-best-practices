@@ -14,6 +14,7 @@ The slack integration, also contained in this repository is [documented below](#
 - **Check PR Description Is Not Empty**: Ensures that the pull request description is not empty.
 - **Add 'best-practice' Label to PR**: Automatically adds the 'best-practice' label to the pull request on GitHub.
 - **Creates a new Jira Ticket**: If the command `/jira-epic YOURJIRAKEY-1234` is detected in the **description** or a **comment** a Jira **Task** is created under the given Jira **Epic** "YOURJIRAKEY-1234"
+ - **Auto-create Jira Task for Issues**: When a new GitHub Issue is opened, a Jira Task is created automatically (defaults under epic `HMS-5279`). The created Jira key is appended to the GitHub Issue title and body.
 
 ## Integration in your GitHub project
 
@@ -28,6 +29,8 @@ on:
     types: [opened, synchronize, reopened, edited]
   issue_comment:
     types: [created]
+  issues:
+    types: [opened]
 
 jobs:
   pr-best-practices:
