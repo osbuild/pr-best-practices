@@ -11,6 +11,9 @@ inputs:
   regex:
     description: "A custom regular expression for PR titles"
     required: false
+  new_issues_jira_epic:
+    description: "Optional Jira Epic key for auto-created tasks from newly opened GitHub Issues (e.g. 'HMS-1234'). If unset, no Jira task is created for new issues."
+    required: false
 
 runs:
   using: "composite"
@@ -144,5 +147,60 @@ runs:
           --github-token "$GITHUB_TOKEN" \
           --pr-title "$PR_TITLE" \
           --pr-body "$PR_BODY" \
+          --jira-key "$JIRA_KEY"
+      shell: bash
+
+    - name: Create Jira task for newly opened issues
+      if: ${{ github.event_name == 'issues' && github.event.action == 'opened' }}
+      env:
+        ISSUE_TITLE: ${{ github.event.issue.title }}
+        ISSUE_BODY: ${{ github.event.issue.body }}
+        ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
+        ISSUE_API_URL: ${{ github.event.issue.url }}
+        ISSUE_HTML_URL: ${{ github.event.issue.html_url }}
+        GITHUB_TOKEN: ${{ inputs.token }}
+        JIRA_TOKEN: ${{ inputs.jira_token }}
+        NEW_ISSUES_JIRA_EPIC: ${{ inputs.new_issues_jira_epic }}
+      run: |
+        set -euo pipefail
+
+        EPIC_KEY="${NEW_ISSUES_JIRA_EPIC}"
+
+        if [[ -z "$EPIC_KEY" ]]; then
+          echo "⚪ 'new_issues_jira_epic' not set. Skipping Jira creation for new issues."
+          exit 0
+        fi
+
+        echo "Processing newly opened issue for Jira creation under epic $EPIC_KEY"
+
+        # Skip if title or body already contain a Jira reference
+        if python3 "${{ github.action_path }}/pr_best_practices.py" --pr-title "$ISSUE_TITLE"; then
+          echo "⚪ Issue title already contains a Jira reference. Skipping creation."
+          exit 0
+        fi
+        if ! python3 "${{ github.action_path }}/pr_best_practices.py" --pr-description-jira "$ISSUE_BODY"; then
+          echo "⚪ Issue body already contains a Jira reference. Skipping creation."
+          exit 0
+        fi
+
+        # Create Jira task
+        DESCRIPTION_WITH_LINK="$ISSUE_BODY
+
+        GitHub Issue: $ISSUE_HTML_URL"
+        echo "Creating a new Task under the Epic $EPIC_KEY"
+        JIRA_KEY=$(python3 "${{ github.action_path }}/jira_bot.py" \
+          --token "$JIRA_TOKEN" \
+          --summary "$ISSUE_TITLE" \
+          --description "$DESCRIPTION_WITH_LINK" \
+          --epic-link "$EPIC_KEY" \
+          --assignee "$ISSUE_AUTHOR" \
+          --assignees-yaml "${{ github.action_path }}/usermap.yaml")
+
+        # Update the GitHub issue title/body to include the Jira key and link
+        python3 "${{ github.action_path }}/update_pr.py" \
+          --issue-url "$ISSUE_API_URL" \
+          --github-token "$GITHUB_TOKEN" \
+          --pr-title "$ISSUE_TITLE" \
+          --pr-body "$ISSUE_BODY" \
           --jira-key "$JIRA_KEY"
       shell: bash
