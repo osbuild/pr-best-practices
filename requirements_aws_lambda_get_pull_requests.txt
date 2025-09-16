@@ -1,7 +1,7 @@
 jira
 requests
 requests_cache
-ghapi
+ghapi==1.0.6
 pyyaml
 
 # jira needs 'pkg_resources'
