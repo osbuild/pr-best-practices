@@ -1,40 +1,39 @@
 assignees:
   - github: schuellerf
-    jira: fschulle@redhat.com
+    jira: "712020:b952716f-c6c8-4c18-bf5c-3bd348940cbf"
     slack: fschulle
   - github: ondrejbudai
-    jira: obudai@redhat.com
+    jira: "712020:56a8991d-02ca-4886-a89f-e60de46a276e"
   - github: bcl
-    jira: brlane@redhat.com 
+    jira: "712020:02c232ff-66c9-4f94-a925-3f5e3ebfe73d"
   - github: ochosi
-    jira: ssteinbe@redhat.com
-  - github: mvo5
-    jira: mvogt@redhat.com
+    jira: "712020:e16c16cc-b2fa-431d-ac63-df7e4787cc87"
   - github: achilleas-k
-    jira: akoutsou@redhat.com
+    jira: "712020:e3520ea0-dfa7-419b-8bac-f89a11430cfe"
   - github: thozza
-    jira: thozza@redhat.com
+    jira: "70121:2f02493a-32e0-4445-82a0-4135be844a45"
   - github: croissanne
-    jira: sraymaek@redhat.com
+    jira: "712020:10454c4b-1571-4d32-a2ad-9a0142a4e760"
   - github: kingsleyzissou
-    jira: gzuccare@redhat.com
+    jira: "712020:862fbd9a-1907-42f7-81c4-746a2273466f"
   - github: supakeen
-    jira: sdevlieg@redhat.com
+    jira: "712020:def7b27c-d705-47d2-827e-9f3152edd838"
   - github: regexowl
-    jira: ksimicko@redhat.com
+    jira: "712020:fe1a78ef-2bf9-4190-9956-bc13ec42de33"
   - github: mgold1234
-    jira: mgold@redhat.com
+    jira: "605c7a60b18de500710a1684"
   - github: lucasgarfield
-    jira: lgarfiel@redhat.com
+    jira: "712020:49cc193f-038a-43b5-bcf6-b79a90d42f98"
   - github: tkoscieln
-    jira: tkosciel@redhat.com
+    jira: "712020:afadf713-b939-4fc3-adfd-10bde24ab888"
   - github: avitova
-    jira: avitova@redhat.com
+    jira: "712020:b7cbcae9-b6d1-4b69-ac2c-f2f23ee1472c"
   - github: ksiekl
-    jira: ksieklov@redhat.com
+    jira: "712020:133f5332-65ab-48a9-bda2-f1c5604d3284"
   - github: lzap
-    jira: lzap@redhat.com
+    jira: "70121:8eb51dbb-d694-46b2-9b1b-706524c05d92"
     slack: lzapleta
   - github: melcorr
-    jira: mcorr@redhat.com
-
+    jira: "70121:b01e17cf-8e9e-4dc1-84e2-ff86d8ddfb47"
+  - github: jlsherrill
+    jira: "712020:ff39bd2c-06af-41cf-ad1d-7a01db564d0f"
