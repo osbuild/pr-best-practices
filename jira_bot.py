@@ -13,24 +13,18 @@ DEFAULT_ISSUE_TYPE = os.getenv("DEFAULT_ISSUE_TYPE", "Task")
 DEFAULT_COMPONENT = os.getenv("DEFAULT_COMPONENT", "Image Builder")
 
 
-def get_jira_username(jira, github_nick):
+def get_jira_account_id(github_nick):
     """
-    Find the Jira username corresponding to a GitHub nickname.
-    Can also resolve E-Mail to Jira username
+    Return the Jira Cloud accountId for a GitHub nickname via usermap.yaml.
     """
     global assignee_mapping
 
-    user = assignee_mapping.github2jira(github_nick)
-    if not user:
-        print(f"🟠 Warning: No Jira username found for GitHub nickname '{github_nick}'.", file=sys.stderr)
+    account_id = assignee_mapping.github2jira(github_nick)
+    if not account_id:
+        print(f"🟠 Warning: No Jira account ID found for GitHub nickname '{github_nick}'.", file=sys.stderr)
         return None
 
-    resolved_user = jira.search_users(user)
-    if len(resolved_user) != 1:
-        print(f"🟠 Warning: Expected 1 user for '{github_nick}' but got {resolved_user}.", file=sys.stderr)
-        return None
-
-    return resolved_user[0].name
+    return account_id
 
 
 def is_epic_issue(jira, issue_key):
@@ -93,7 +87,7 @@ def create_jira_task(token, project_key, summary, description, issue_type, epic_
 
     # Add assignee if provided
     if assignee:
-        issue_dict['assignee'] = {'name': get_jira_username(jira, assignee)}
+        issue_dict['assignee'] = {'accountId': get_jira_account_id(assignee)}
 
     # Add component if provided
     if component:
