@@ -7,7 +7,7 @@ import sys
 from jira import JIRA
 from utils import UserMap, format_help_as_md
 
-JIRA_SERVER = os.getenv("JIRA_SERVER", "https://issues.redhat.com")
+JIRA_SERVER = os.getenv("JIRA_SERVER", "https://redhat.atlassian.net")
 DEFAULT_PROJECT_KEY = os.getenv("DEFAULT_PROJECT_KEY", "HMS")
 DEFAULT_ISSUE_TYPE = os.getenv("DEFAULT_ISSUE_TYPE", "Task")
 DEFAULT_COMPONENT = os.getenv("DEFAULT_COMPONENT", "Image Builder")
@@ -49,19 +49,16 @@ def is_epic_issue(jira, issue_key):
 
 
 # pylint: disable=too-many-arguments
-def create_jira_task(token, project_key, summary, description, issue_type, epic_link, component, assignee, story_points):
+def create_jira_task(token, email, project_key, summary,
+                     description, issue_type, epic_link, component,
+                     assignee, story_points):
     """
     create_jira_task creates a jira issue with the given parameter
     """
-    options = {
-        'server': JIRA_SERVER,
-        'headers': {
-            'Authorization': f'Bearer {token}'
-        }
-    }
     try:
-        jira = JIRA(options=options)
-        print("Connected to Jira successfully using a personal access token.", file=sys.stderr)
+        jira = JIRA(server=JIRA_SERVER,
+                    basic_auth=(email, token))
+        print(f"Connected to Jira ({JIRA_SERVER}).", file=sys.stderr)
     # pylint: disable=broad-exception-caught
     except Exception as e:
         print(f"🔴 Failed to connect to Jira: {e}", file=sys.stderr)
@@ -78,12 +75,12 @@ def create_jira_task(token, project_key, summary, description, issue_type, epic_
         'summary': summary,
         'description': description,
         'issuetype': {'name': issue_type},
-        'customfield_12310243': story_points,
+        'customfield_10028': story_points,
     }
 
     # Add epic link if provided
     if epic_link:
-        issue_dict['customfield_12311140'] = epic_link
+        issue_dict['parent'] = {'key': epic_link}
 
     # Add assignee if provided
     if assignee:
@@ -110,7 +107,9 @@ def main():
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description="Create a Jira task.")
     parser.add_argument('--token', required=True,
-                        help="The Jira personal access token")
+                        help="The Jira API token")
+    parser.add_argument('--email', required=True,
+                        help="The Jira account email")
     parser.add_argument('--project-key', default=DEFAULT_PROJECT_KEY,
                         help=f"The Jira project id (optional, default: {DEFAULT_PROJECT_KEY})")
     parser.add_argument('--summary', required=True,
@@ -143,6 +142,7 @@ def main():
     # Call the task creation function with parsed arguments
     create_jira_task(
         token=args.token,
+        email=args.email,
         project_key=args.project_key,
         summary=args.summary,
         description=args.description,

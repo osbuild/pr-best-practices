@@ -6,7 +6,10 @@ inputs:
     description: "A GitHub token to add a label to the PR"
     required: true
   jira_token:
-    description: "A Jira token to create issues"
+    description: "A Jira API token to create issues"
+    required: true
+  jira_email:
+    description: "The Jira account email for the API token"
     required: true
   regex:
     description: "A custom regular expression for PR titles"
@@ -36,6 +39,7 @@ runs:
         PR_URL: ${{github.event.pull_request.url}}
         GITHUB_TOKEN: ${{ inputs.token }}
         JIRA_TOKEN: ${{ inputs.jira_token }}
+        JIRA_EMAIL: ${{ inputs.jira_email }}
       run: |
         set -euo pipefail
 
@@ -73,6 +77,7 @@ runs:
         echo "Creating a new Task under the Epic $EPIC_KEY"
         JIRA_KEY=$(python3 "${{ github.action_path }}/jira_bot.py" \
           --token "$JIRA_TOKEN" \
+          --email "$JIRA_EMAIL" \
           --summary "$PR_TITLE" \
           --description "$PR_BODY" \
           --epic-link "$EPIC_KEY" \
@@ -100,6 +105,7 @@ runs:
         PR_URL: ${{github.event.issue.url}}
         GITHUB_TOKEN: ${{ inputs.token }}
         JIRA_TOKEN: ${{ inputs.jira_token }}
+        JIRA_EMAIL: ${{ inputs.jira_email }}
       run: |
         set -euo pipefail
 
@@ -133,6 +139,7 @@ runs:
         echo "Creating a new Task under the Epic $EPIC_KEY"
         JIRA_KEY=$(python3 "${{ github.action_path }}/jira_bot.py" \
           --token "$JIRA_TOKEN" \
+          --email "$JIRA_EMAIL" \
           --summary "$PR_TITLE" \
           --description "$PR_BODY" \
           --epic-link "$EPIC_KEY" \
@@ -160,6 +167,7 @@ runs:
         ISSUE_HTML_URL: ${{ github.event.issue.html_url }}
         GITHUB_TOKEN: ${{ inputs.token }}
         JIRA_TOKEN: ${{ inputs.jira_token }}
+        JIRA_EMAIL: ${{ inputs.jira_email }}
         NEW_ISSUES_JIRA_EPIC: ${{ inputs.new_issues_jira_epic }}
       run: |
         set -euo pipefail
@@ -190,6 +198,7 @@ runs:
         echo "Creating a new Task under the Epic $EPIC_KEY"
         JIRA_KEY=$(python3 "${{ github.action_path }}/jira_bot.py" \
           --token "$JIRA_TOKEN" \
+          --email "$JIRA_EMAIL" \
           --summary "$ISSUE_TITLE" \
           --description "$DESCRIPTION_WITH_LINK" \
           --epic-link "$EPIC_KEY" \
