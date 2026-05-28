@@ -1,7 +1,8 @@
 # Usage
 ```
-       jira_bot.py [-h] --token TOKEN [--project-key PROJECT_KEY] --summary
-                   SUMMARY --description DESCRIPTION [--issuetype ISSUETYPE]
+       jira_bot.py [-h] --token TOKEN --email EMAIL
+                   [--project-key PROJECT_KEY] --summary SUMMARY
+                   --description DESCRIPTION [--issuetype ISSUETYPE]
                    [--assignee ASSIGNEE] [--story-points STORY_POINTS]
                    --epic-link EPIC_LINK [--component COMPONENT]
                    [--assignees-yaml ASSIGNEES_YAML] [--help-md]
@@ -11,7 +12,8 @@ Create a Jira task.
 # Options
 ```
   -h, --help            show this help message and exit
-  --token TOKEN         The Jira personal access token
+  --token TOKEN         The Jira API token
+  --email EMAIL         The Jira account email
   --project-key PROJECT_KEY
                         The Jira project id (optional, default: HMS)
   --summary SUMMARY     The summary of the task.
