@@ -1,6 +1,7 @@
 import argparse
 import re
 import os
+import subprocess
 import sys
 import requests
 from utils import format_help_as_md
@@ -28,8 +29,11 @@ def check_pr_title_contains_jira(title):
 
 
 def check_commits_contain_jira(head):
-    cmd = f"git rev-list main..{head} --format='%s: %b' --no-commit-header"
-    commits = os.popen(cmd).read().strip().split('\n')
+    result = subprocess.run(
+        ["git", "rev-list", f"main..{head}", "--format=%s: %b", "--no-commit-header"],
+        stdout=subprocess.PIPE, text=True
+    )
+    commits = result.stdout.strip().split('\n')
     for commit in commits:
         # We can directly mark commits that are empty
         if not commit.strip():

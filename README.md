@@ -32,6 +32,10 @@ on:
   issues:
     types: [opened]
 
+permissions:
+  pull-requests: write
+  issues: write
+
 jobs:
   pr-best-practices:
     runs-on: ubuntu-latest
