@@ -162,7 +162,6 @@ runs:
       env:
         ISSUE_TITLE: ${{ github.event.issue.title }}
         ISSUE_BODY: ${{ github.event.issue.body }}
-        ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
         ISSUE_API_URL: ${{ github.event.issue.url }}
         ISSUE_HTML_URL: ${{ github.event.issue.html_url }}
         GITHUB_TOKEN: ${{ inputs.token }}
@@ -202,7 +201,6 @@ runs:
           --summary "$ISSUE_TITLE" \
           --description "$DESCRIPTION_WITH_LINK" \
           --epic-link "$EPIC_KEY" \
-          --assignee "$ISSUE_AUTHOR" \
           --assignees-yaml "${{ github.action_path }}/usermap.yaml")
 
         # Update the GitHub issue title/body to include the Jira key and link
